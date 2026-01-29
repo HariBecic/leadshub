@@ -1,96 +1,80 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, Eye, Unlock } from 'lucide-react'
-
-interface Invoice {
-  id: string
-  invoice_number: string
-  broker_id: string
-  broker?: { name: string; email: string }
-  type: string
-  status: string
-  amount: number
-  period_start?: string
-  period_end?: string
-  due_date?: string
-  created_at: string
-}
+import { Plus, Eye, Lock } from 'lucide-react'
 
 export default function RechnungenPage() {
-  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [invoices, setInvoices] = useState<any[]>([])
+  const [brokers, setBrokers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
-  const [unlocking, setUnlocking] = useState<string | null>(null)
+  const [formData, setFormData] = useState({
+    broker_id: '', amount: '', description: '', type: 'single'
+  })
 
-  useEffect(() => { loadInvoices() }, [])
+  useEffect(() => { loadData() }, [])
 
-  async function loadInvoices() {
-    const { data } = await supabase
+  async function loadData() {
+    const { data: invoicesData } = await supabase
       .from('invoices')
-      .select('*, broker:brokers(name, email)')
+      .select('*, broker:brokers(name)')
       .order('created_at', { ascending: false })
-    setInvoices(data || [])
+    const { data: brokersData } = await supabase.from('brokers').select('*').eq('is_active', true)
+    
+    setInvoices(invoicesData || [])
+    setBrokers(brokersData || [])
     setLoading(false)
   }
 
-  async function markAsPaid(invoice: Invoice) {
-    setUnlocking(invoice.id)
+  async function createInvoice(e: React.FormEvent) {
+    e.preventDefault()
     
-    // Update invoice status
-    await supabase
-      .from('invoices')
-      .update({ status: 'paid', paid_at: new Date().toISOString() })
-      .eq('id', invoice.id)
-
-    // If single purchase, unlock the lead
-    if (invoice.type === 'single') {
-      // Get the assignment from invoice items
-      const { data: items } = await supabase
-        .from('invoice_items')
-        .select('lead_assignment_id')
-        .eq('invoice_id', invoice.id)
-
-      if (items && items.length > 0) {
-        for (const item of items) {
-          if (item.lead_assignment_id) {
-            // Unlock the assignment
-            await supabase
-              .from('lead_assignments')
-              .update({ unlocked: true })
-              .eq('id', item.lead_assignment_id)
-
-            // Send unlock email
-            await fetch('/api/send-unlock-email', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ assignment_id: item.lead_assignment_id })
-            })
-          }
-        }
-      }
-    }
-
-    setUnlocking(null)
-    loadInvoices()
+    const year = new Date().getFullYear()
+    const { count } = await supabase.from('invoices').select('*', { count: 'exact', head: true }).like('invoice_number', `${year}-%`)
+    const invoiceNumber = `${year}-${String((count || 0) + 1).padStart(4, '0')}`
+    
+    await supabase.from('invoices').insert({
+      invoice_number: invoiceNumber,
+      broker_id: formData.broker_id,
+      amount: parseFloat(formData.amount),
+      description: formData.description,
+      type: formData.type,
+      status: 'pending'
+    })
+    
+    setShowModal(false)
+    setFormData({ broker_id: '', amount: '', description: '', type: 'single' })
+    loadData()
   }
 
-  const statusBadge = (status: string) => {
-    switch (status) {
-      case 'pending': return <span className="badge badge-warning">Offen</span>
-      case 'paid': return <span className="badge badge-success">Bezahlt</span>
-      case 'cancelled': return <span className="badge badge-danger">Storniert</span>
-      default: return <span className="badge badge-neutral">{status}</span>
+  async function markAsPaid(invoiceId: string) {
+    await supabase.from('invoices').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', invoiceId)
+    
+    // Check if this unlocks leads
+    const { data: invoice } = await supabase.from('invoices').select('*').eq('id', invoiceId).single()
+    if (invoice?.type === 'single' && invoice?.lead_assignment_id) {
+      await fetch('/api/send-unlock-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignment_id: invoice.lead_assignment_id })
+      })
     }
+    
+    loadData()
   }
 
-  const typeBadge = (type: string) => {
-    switch (type) {
-      case 'single': return <span className="badge badge-info">Einzelkauf</span>
-      case 'subscription': return <span className="badge badge-accent">Abo</span>
-      case 'commission': return <span className="badge" style={{ background: '#f3e8ff', color: '#7c3aed' }}>Provision</span>
-      default: return <span className="badge badge-neutral">{type}</span>
-    }
+  async function downloadPdf(invoiceId: string) {
+    const res = await fetch(`/api/invoice/generate?id=${invoiceId}`)
+    const blob = await res.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `rechnung-${invoiceId}.pdf`
+    a.click()
+  }
+
+  if (loading) {
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}><div className="spinner"></div></div>
   }
 
   return (
@@ -98,20 +82,12 @@ export default function RechnungenPage() {
       <div className="page-header">
         <h1 className="page-title">Rechnungen</h1>
         <button onClick={() => setShowModal(true)} className="btn btn-primary">
-          <Plus size={20} />Neue Rechnung
+          <Plus size={18} /> Neue Rechnung
         </button>
       </div>
 
       <div className="card">
-        {loading ? (
-          <div style={{ padding: '40px', textAlign: 'center' }}>
-            <div className="spinner" style={{ margin: '0 auto' }}></div>
-          </div>
-        ) : invoices.length === 0 ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
-            Noch keine Rechnungen vorhanden
-          </div>
-        ) : (
+        <div className="table-responsive">
           <table className="table">
             <thead>
               <tr>
@@ -125,37 +101,30 @@ export default function RechnungenPage() {
               </tr>
             </thead>
             <tbody>
-              {invoices.map((invoice) => (
-                <tr key={invoice.id}>
-                  <td style={{ fontWeight: 600 }}>{invoice.invoice_number}</td>
-                  <td>{invoice.broker?.name}</td>
-                  <td>{typeBadge(invoice.type)}</td>
-                  <td style={{ fontWeight: 600 }}>CHF {Number(invoice.amount).toFixed(2)}</td>
-                  <td style={{ color: '#64748b' }}>{new Date(invoice.created_at).toLocaleDateString('de-CH')}</td>
-                  <td>{statusBadge(invoice.status)}</td>
+              {invoices.map((inv) => (
+                <tr key={inv.id}>
+                  <td style={{ fontWeight: 500 }}>{inv.invoice_number}</td>
+                  <td>{inv.broker?.name}</td>
+                  <td>
+                    <span className={`badge ${inv.type === 'commission' ? 'badge-accent' : 'badge-info'}`}>
+                      {inv.type === 'commission' ? 'Provision' : inv.type === 'package' ? 'Paket' : 'Einzelkauf'}
+                    </span>
+                  </td>
+                  <td style={{ fontWeight: 600 }}>CHF {Number(inv.amount).toFixed(2)}</td>
+                  <td style={{ opacity: 0.7 }}>{new Date(inv.created_at).toLocaleDateString('de-CH')}</td>
+                  <td>
+                    <span className={`badge ${inv.status === 'paid' ? 'badge-success' : 'badge-warning'}`}>
+                      {inv.status === 'paid' ? 'Bezahlt' : 'Offen'}
+                    </span>
+                  </td>
                   <td>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <a 
-                        href={`/api/invoice/${invoice.id}`} 
-                        target="_blank"
-                        className="btn btn-secondary btn-sm"
-                        title="Anzeigen"
-                      >
+                      <button onClick={() => downloadPdf(inv.id)} className="btn btn-sm btn-secondary">
                         <Eye size={16} />
-                      </a>
-                      {invoice.status === 'pending' && (
-                        <button 
-                          onClick={() => markAsPaid(invoice)}
-                          disabled={unlocking === invoice.id}
-                          className="btn btn-sm"
-                          style={{ background: '#dcfce7', color: '#166534' }}
-                        >
-                          {unlocking === invoice.id ? '...' : (
-                            <>
-                              {invoice.type === 'single' && <Unlock size={14} style={{ marginRight: '4px' }} />}
-                              Bezahlt
-                            </>
-                          )}
+                      </button>
+                      {inv.status === 'pending' && (
+                        <button onClick={() => markAsPaid(inv.id)} className="btn btn-sm btn-primary">
+                          <Lock size={16} /> Bezahlt
                         </button>
                       )}
                     </div>
@@ -164,91 +133,45 @@ export default function RechnungenPage() {
               ))}
             </tbody>
           </table>
-        )}
+        </div>
       </div>
 
-      {showModal && <NewInvoiceModal onClose={() => setShowModal(false)} onSave={() => { setShowModal(false); loadInvoices() }} />}
-    </div>
-  )
-}
-
-function NewInvoiceModal(props: { onClose: () => void; onSave: () => void }) {
-  const [loading, setLoading] = useState(false)
-  const [brokers, setBrokers] = useState<any[]>([])
-  const [brokerId, setBrokerId] = useState('')
-  const [type, setType] = useState('subscription')
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    loadBrokers()
-  }, [])
-
-  async function loadBrokers() {
-    const { data } = await supabase.from('brokers').select('*').eq('status', 'active')
-    setBrokers(data || [])
-    if (data && data.length > 0) setBrokerId(data[0].id)
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
-
-    try {
-      const res = await fetch('/api/invoice/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ broker_id: brokerId, type })
-      })
-      const data = await res.json()
-      
-      if (data.success) {
-        props.onSave()
-      } else {
-        setError(data.error || 'Fehler beim Erstellen')
-      }
-    } catch {
-      setError('Netzwerkfehler')
-    }
-    setLoading(false)
-  }
-
-  return (
-    <div className="modal-overlay" onClick={props.onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Neue Rechnung erstellen</h2>
-        <p style={{ color: '#64748b', marginBottom: '24px' }}>Wähle Broker und Rechnungstyp</p>
-
-        {error && (
-          <div style={{ marginBottom: '16px', padding: '12px', background: '#fee2e2', color: '#991b1b', borderRadius: '8px' }}>
-            {error}
+      {showModal && (
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>Neue Rechnung</h2>
+            <form onSubmit={createInvoice} style={{ marginTop: '20px' }}>
+              <div style={{ marginBottom: '16px' }}>
+                <label className="input-label">Broker</label>
+                <select className="input" value={formData.broker_id} onChange={e => setFormData({...formData, broker_id: e.target.value})} required>
+                  <option value="">-- Auswählen --</option>
+                  {brokers.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <label className="input-label">Typ</label>
+                <select className="input" value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})}>
+                  <option value="single">Einzelkauf</option>
+                  <option value="package">Paket</option>
+                  <option value="commission">Provision</option>
+                </select>
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <label className="input-label">Betrag (CHF)</label>
+                <input type="number" step="0.01" className="input" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} required />
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <label className="input-label">Beschreibung</label>
+                <textarea className="input" rows={3} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
+              </div>
+              <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+                <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowModal(false)}>Abbrechen</button>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Erstellen</button>
+              </div>
+            </form>
           </div>
-        )}
-
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '16px' }}>
-            <label className="input-label">Broker</label>
-            <select value={brokerId} onChange={(e) => setBrokerId(e.target.value)} className="select">
-              {brokers.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
-          </div>
-
-          <div style={{ marginBottom: '24px' }}>
-            <label className="input-label">Rechnungstyp</label>
-            <select value={type} onChange={(e) => setType(e.target.value)} className="select">
-              <option value="subscription">Abo (monatlich)</option>
-              <option value="commission">Provisionen (monatlich)</option>
-            </select>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-            <button type="button" onClick={props.onClose} className="btn btn-secondary">Abbrechen</button>
-            <button type="submit" disabled={loading} className="btn btn-primary">
-              {loading ? 'Wird erstellt...' : 'Rechnung erstellen'}
-            </button>
-          </div>
-        </form>
-      </div>
+        </div>
+      )}
     </div>
   )
 }
