@@ -47,7 +47,7 @@ export async function GET(
     return NextResponse.json({ error: 'Ungültiger Token' }, { status: 403 })
   }
 
-  const finalStatuses = ['not_reached', 'closed']
+  const finalStatuses = ['not_reached', 'closed', 'no_interest']
   if (finalStatuses.includes(assignment.followup_response)) {
     return NextResponse.json({ error: 'Feedback wurde bereits abgeschlossen' }, { status: 400 })
   }
@@ -69,6 +69,7 @@ export async function GET(
       last_name: assignment.lead?.last_name,
       email: assignment.lead?.email,
       phone: assignment.lead?.phone,
+      no_interest_count: assignment.lead?.no_interest_count || 0
     },
     revenue_share_percent: assignment.revenue_share_percent,
     assigned_at: assignment.assigned_at,
@@ -112,7 +113,7 @@ export async function POST(
     return NextResponse.json({ error: 'Ungültiger Token' }, { status: 403 })
   }
 
-  const finalStatuses = ['not_reached', 'closed']
+  const finalStatuses = ['not_reached', 'closed', 'no_interest']
   if (finalStatuses.includes(assignment.followup_response)) {
     return NextResponse.json({ error: 'Feedback wurde bereits abgeschlossen' }, { status: 400 })
   }
@@ -121,12 +122,24 @@ export async function POST(
   let leadStatus = 'assigned'
   let contacted = false
   let nextFollowupDate: string | null = null
+  let newNoInterestCount = assignment.lead?.no_interest_count || 0
 
   switch (status) {
     case 'not_reached':
       assignmentStatus = 'returned'
       leadStatus = 'available'
       contacted = false
+      break
+    case 'no_interest':
+      assignmentStatus = 'returned'
+      contacted = true
+      newNoInterestCount += 1
+      // 2x no interest = lead is dead
+      if (newNoInterestCount >= 2) {
+        leadStatus = 'closed'
+      } else {
+        leadStatus = 'available' // back to pool for another broker
+      }
       break
     case 'reached':
       assignmentStatus = 'in_progress'
@@ -152,7 +165,6 @@ export async function POST(
     commissionValue = commission_amount * (assignment.revenue_share_percent / 100)
   }
 
-  // Build update object
   const updateData: Record<string, any> = {
     status: assignmentStatus,
     followup_response: status,
@@ -183,10 +195,15 @@ export async function POST(
     }, { status: 500 })
   }
 
-  // Update lead status
+  // Update lead status and no_interest_count
+  const leadUpdateData: Record<string, any> = { status: leadStatus }
+  if (status === 'no_interest') {
+    leadUpdateData.no_interest_count = newNoInterestCount
+  }
+
   const { error: leadError } = await supabase
     .from('leads')
-    .update({ status: leadStatus })
+    .update(leadUpdateData)
     .eq('id', assignment.lead_id)
 
   if (leadError) {
@@ -200,6 +217,7 @@ export async function POST(
     success: true, 
     status: assignmentStatus,
     next_followup: nextFollowupDate || null,
-    updated_id: id
+    no_interest_count: newNoInterestCount,
+    lead_closed: newNoInterestCount >= 2
   })
 }

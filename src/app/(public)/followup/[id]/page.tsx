@@ -1,9 +1,9 @@
 'use client'
 import { useEffect, useState, Suspense } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
-import { CheckCircle, XCircle, Phone, Calendar, Award } from 'lucide-react'
+import { CheckCircle, XCircle, Phone, Calendar, Award, ThumbsDown } from 'lucide-react'
 
-type FeedbackStatus = 'not_reached' | 'reached' | 'scheduled' | 'closed'
+type FeedbackStatus = 'not_reached' | 'reached' | 'scheduled' | 'closed' | 'no_interest'
 
 function FollowupContent() {
   const params = useParams()
@@ -16,7 +16,7 @@ function FollowupContent() {
   const [selectedStatus, setSelectedStatus] = useState<FeedbackStatus | null>(null)
   const [notes, setNotes] = useState('')
   const [commissionAmount, setCommissionAmount] = useState('')
-  const [debugInfo, setDebugInfo] = useState('')
+  const [resultInfo, setResultInfo] = useState<any>(null)
 
   const token = searchParams.get('token')
   const id = params.id as string
@@ -33,7 +33,6 @@ function FollowupContent() {
   async function loadAssignment() {
     try {
       const url = `/api/followup/${id}?token=${token}`
-      setDebugInfo(`Loading: ${url}`)
       const res = await fetch(url)
       const data = await res.json()
       
@@ -65,8 +64,6 @@ function FollowupContent() {
         commission_amount: selectedStatus === 'closed' ? parseFloat(commissionAmount) : null
       }
       
-      setDebugInfo(`POST to: ${url}, body: ${JSON.stringify(body)}`)
-      
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -74,10 +71,9 @@ function FollowupContent() {
       })
       const data = await res.json()
       
-      setDebugInfo(`Response: ${JSON.stringify(data)}`)
-      
       if (data.success) {
         setSuccess(true)
+        setResultInfo(data)
       } else {
         setError(data.error || 'Fehler beim Speichern')
         if (data.details) {
@@ -90,7 +86,6 @@ function FollowupContent() {
     setSubmitting(false)
   }
 
-  // Styles
   const pageStyle: React.CSSProperties = {
     minHeight: '100vh',
     background: '#f1f5f9',
@@ -140,6 +135,16 @@ function FollowupContent() {
               Der Lead wird wieder freigegeben und kann erneut vermittelt werden.
             </p>
           )}
+          {selectedStatus === 'no_interest' && !resultInfo?.lead_closed && (
+            <p style={{ color: '#f97316', marginTop: '16px', fontSize: '14px' }}>
+              Der Lead wird wieder freigegeben. Ein anderer Broker kann es versuchen.
+            </p>
+          )}
+          {selectedStatus === 'no_interest' && resultInfo?.lead_closed && (
+            <p style={{ color: '#ef4444', marginTop: '16px', fontSize: '14px' }}>
+              Der Lead wurde nach 2x kein Interesse endgültig geschlossen.
+            </p>
+          )}
           {selectedStatus === 'closed' && (
             <p style={{ color: '#22c55e', marginTop: '16px', fontSize: '14px' }}>
               Herzlichen Glückwunsch zum Abschluss! Die Provision wird verrechnet.
@@ -157,7 +162,8 @@ function FollowupContent() {
 
   const statusOptions = [
     { id: 'not_reached', label: 'Nicht erreicht', description: 'Kunde war nicht erreichbar', icon: XCircle, color: '#ef4444', bg: '#fee2e2' },
-    { id: 'reached', label: 'Erreicht', description: 'Gespräch geführt, noch offen', icon: Phone, color: '#f97316', bg: '#ffedd5' },
+    { id: 'no_interest', label: 'Kein Interesse', description: 'Kunde hat kein Interesse', icon: ThumbsDown, color: '#f97316', bg: '#ffedd5' },
+    { id: 'reached', label: 'Erreicht', description: 'Gespräch geführt, noch offen', icon: Phone, color: '#8b5cf6', bg: '#ede9fe' },
     { id: 'scheduled', label: 'Terminiert', description: 'Beratungstermin vereinbart', icon: Calendar, color: '#3b82f6', bg: '#dbeafe' },
     { id: 'closed', label: 'Abgeschlossen', description: 'Police abgeschlossen', icon: Award, color: '#22c55e', bg: '#dcfce7' },
   ]
@@ -189,6 +195,11 @@ function FollowupContent() {
               </div>
             )}
           </div>
+          {assignment?.lead?.no_interest_count > 0 && (
+            <div style={{ marginTop: '12px', padding: '8px 12px', background: '#fef3c7', borderRadius: '8px', fontSize: '13px', color: '#92400e' }}>
+              ⚠️ Dieser Lead hatte bereits {assignment.lead.no_interest_count}x kein Interesse
+            </div>
+          )}
         </div>
 
         <div style={{ background: 'white', borderRadius: '16px', padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
