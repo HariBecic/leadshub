@@ -119,7 +119,7 @@ export default function LeadDetailPage() {
   const otherData = filteredExtraData.filter(([key]) => key !== 'persons' && key !== 'people' && key !== 'extra_data')
   const nestedExtra = extraData.extra_data ? Object.entries(extraData.extra_data as Record<string, unknown>).filter(([, v]) => v && v !== '') : []
 
-  const formatPricing = (a: LeadAssignment) => {
+  const formatPricing = (a: any) => {
     if (a.pricing_model === 'revenue_share') {
       return <span className="text-purple-600 font-medium">{a.revenue_share_percent}% Beteiligung</span>
     } else if (a.pricing_model === 'subscription') {
