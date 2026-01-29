@@ -1,13 +1,13 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, FileText, Download, Eye } from 'lucide-react'
+import { Plus, Eye, Unlock } from 'lucide-react'
 
 interface Invoice {
   id: string
   invoice_number: string
   broker_id: string
-  broker?: { name: string }
+  broker?: { name: string; email: string }
   type: string
   status: string
   amount: number
@@ -20,25 +20,58 @@ interface Invoice {
 export default function RechnungenPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [loading, setLoading] = useState(true)
-  const [creating, setCreating] = useState(false)
   const [showModal, setShowModal] = useState(false)
+  const [unlocking, setUnlocking] = useState<string | null>(null)
 
   useEffect(() => { loadInvoices() }, [])
 
   async function loadInvoices() {
     const { data } = await supabase
       .from('invoices')
-      .select('*, broker:brokers(name)')
+      .select('*, broker:brokers(name, email)')
       .order('created_at', { ascending: false })
     setInvoices(data || [])
     setLoading(false)
   }
 
-  async function markAsPaid(id: string) {
+  async function markAsPaid(invoice: Invoice) {
+    setUnlocking(invoice.id)
+    
+    // Update invoice status
     await supabase
       .from('invoices')
       .update({ status: 'paid', paid_at: new Date().toISOString() })
-      .eq('id', id)
+      .eq('id', invoice.id)
+
+    // If single purchase, unlock the lead
+    if (invoice.type === 'single') {
+      // Get the assignment from invoice items
+      const { data: items } = await supabase
+        .from('invoice_items')
+        .select('lead_assignment_id')
+        .eq('invoice_id', invoice.id)
+
+      if (items && items.length > 0) {
+        for (const item of items) {
+          if (item.lead_assignment_id) {
+            // Unlock the assignment
+            await supabase
+              .from('lead_assignments')
+              .update({ unlocked: true })
+              .eq('id', item.lead_assignment_id)
+
+            // Send unlock email
+            await fetch('/api/send-unlock-email', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ assignment_id: item.lead_assignment_id })
+            })
+          }
+        }
+      }
+    }
+
+    setUnlocking(null)
     loadInvoices()
   }
 
@@ -112,11 +145,17 @@ export default function RechnungenPage() {
                       </a>
                       {invoice.status === 'pending' && (
                         <button 
-                          onClick={() => markAsPaid(invoice.id)}
+                          onClick={() => markAsPaid(invoice)}
+                          disabled={unlocking === invoice.id}
                           className="btn btn-sm"
                           style={{ background: '#dcfce7', color: '#166534' }}
                         >
-                          Als bezahlt
+                          {unlocking === invoice.id ? '...' : (
+                            <>
+                              {invoice.type === 'single' && <Unlock size={14} style={{ marginRight: '4px' }} />}
+                              Bezahlt
+                            </>
+                          )}
                         </button>
                       )}
                     </div>
