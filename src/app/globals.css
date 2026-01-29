@@ -19,7 +19,7 @@ body {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   min-height: 100vh;
-  padding: 24px 16px;
+  padding: 32px 16px 24px 16px;
   position: fixed;
   left: 0;
   top: 0;
@@ -29,13 +29,20 @@ body {
 }
 
 .sidebar-logo {
-  margin-bottom: 32px;
-  padding: 0 8px;
+  margin-bottom: 24px;
+  padding: 0 16px;
 }
 
 .sidebar-logo img {
-  height: 70px !important;
+  height: 36px !important;
   width: auto !important;
+}
+
+/* Hide logo on mobile in sidebar */
+@media (max-width: 768px) {
+  .sidebar-logo.desktop-only {
+    display: none !important;
+  }
 }
 
 .sidebar-link {
@@ -97,7 +104,7 @@ body {
 }
 
 .mobile-logo {
-  height: 50px !important;
+  height: 36px !important;
   width: auto !important;
 }
 
@@ -426,6 +433,7 @@ p, span, div, td, label {
 @media (max-width: 768px) {
   .sidebar {
     transform: translateX(-100%);
+    padding-top: 24px;
   }
 
   .sidebar.open {
@@ -486,14 +494,6 @@ p, span, div, td, label {
 
   .revenue-card {
     padding: 20px;
-  }
-
-  .revenue-card > div:first-child {
-    margin-bottom: 8px;
-  }
-
-  .revenue-card > div:nth-child(2) {
-    font-size: 24px !important;
   }
 
   /* Two Column Grid - 1 column on mobile */

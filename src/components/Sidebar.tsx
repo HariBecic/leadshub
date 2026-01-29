@@ -1,41 +1,43 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Zap, Users, Receipt, Settings, Package } from 'lucide-react'
+import { LayoutDashboard, Zap, Users, Package, FileText, Settings } from 'lucide-react'
+
+const navItems = [
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/leads', label: 'Leads', icon: Zap },
+  { href: '/broker', label: 'Broker', icon: Users },
+  { href: '/pakete', label: 'Pakete', icon: Package },
+  { href: '/rechnungen', label: 'Rechnungen', icon: FileText },
+  { href: '/einstellungen', label: 'Einstellungen', icon: Settings },
+]
 
 export default function Sidebar() {
   const pathname = usePathname()
-  
-  const links = [
-    { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/leads', label: 'Leads', icon: Zap },
-    { href: '/broker', label: 'Broker', icon: Users },
-    { href: '/pakete', label: 'Pakete', icon: Package },
-    { href: '/rechnungen', label: 'Rechnungen', icon: Receipt },
-    { href: '/einstellungen', label: 'Einstellungen', icon: Settings },
-  ]
 
   return (
-    <div className="sidebar">
-      <div className="sidebar-logo">
+    <aside className="sidebar">
+      {/* Logo nur auf Desktop sichtbar */}
+      <div className="sidebar-logo desktop-only">
         <img src="/logo.png" alt="LeadsHub" />
       </div>
+      
       <nav>
-        {links.map((link) => {
-          const Icon = link.icon
-          const isActive = pathname === link.href || (link.href !== '/' && pathname.startsWith(link.href))
+        {navItems.map((item) => {
+          const isActive = pathname === item.href || 
+            (item.href !== '/' && pathname.startsWith(item.href))
           return (
             <Link
-              key={link.href}
-              href={link.href}
+              key={item.href}
+              href={item.href}
               className={`sidebar-link ${isActive ? 'active' : ''}`}
             >
-              <Icon size={20} />
-              {link.label}
+              <item.icon size={20} />
+              {item.label}
             </Link>
           )
         })}
       </nav>
-    </div>
+    </aside>
   )
 }
