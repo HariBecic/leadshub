@@ -5,6 +5,14 @@ import Link from 'next/link'
 import { supabase, Lead, LeadAssignment, Broker } from '@/lib/supabase'
 import { ArrowLeft, Mail, Phone, MapPin, Tag, User, Shield } from 'lucide-react'
 
+interface Contract {
+  id: string
+  pricing_model: string
+  price_per_lead: number | null
+  revenue_share_percent: number | null
+  monthly_fee: number | null
+}
+
 export default function LeadDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -111,6 +119,16 @@ export default function LeadDetailPage() {
   const otherData = filteredExtraData.filter(([key]) => key !== 'persons' && key !== 'people' && key !== 'extra_data')
   const nestedExtra = extraData.extra_data ? Object.entries(extraData.extra_data as Record<string, unknown>).filter(([, v]) => v && v !== '') : []
 
+  const formatPricing = (a: LeadAssignment) => {
+    if (a.pricing_model === 'revenue_share') {
+      return <span className="text-purple-600 font-medium">{a.revenue_share_percent}% Beteiligung</span>
+    } else if (a.pricing_model === 'subscription') {
+      return <span className="text-blue-600 font-medium">Abo</span>
+    } else {
+      return <span className="font-medium">CHF {a.price_charged}</span>
+    }
+  }
+
   return (
     <div>
       <Link href="/leads" className="flex items-center gap-2 text-gray-500 hover:text-gray-700 mb-6">
@@ -131,7 +149,7 @@ export default function LeadDetailPage() {
               {lead.email && <div className="flex items-center gap-3"><Mail className="text-gray-400" size={20} /><a href={`mailto:${lead.email}`} className="text-blue-600 hover:underline">{lead.email}</a></div>}
               {lead.phone && <div className="flex items-center gap-3"><Phone className="text-gray-400" size={20} /><a href={`tel:${lead.phone}`} className="text-blue-600 hover:underline">{lead.phone}</a></div>}
               {(lead.plz || lead.ort) && <div className="flex items-center gap-3"><MapPin className="text-gray-400" size={20} /><span>{lead.plz} {lead.ort}</span></div>}
-              {lead.category && <div className="flex items-center gap-3"><Tag className="text-gray-400" size={20} /><span className="badge badge-info">{(lead.category as any)?.name || ""}</span></div>}
+              {lead.category && <div className="flex items-center gap-3"><Tag className="text-gray-400" size={20} /><span className="badge badge-info">{(lead.category as any)?.name}</span></div>}
             </div>
           </div>
 
@@ -180,17 +198,19 @@ export default function LeadDetailPage() {
               <p className="text-gray-500 text-sm">Noch keine Zuweisungen</p>
             ) : (
               <div className="space-y-3">
-                {assignments.map((a) => (
+                {assignments.map((a: any) => (
                   <div key={a.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div>
-                      <div className="font-medium">{(a.broker as any)?.name}</div>
+                      <div className="font-medium">{a.broker?.name}</div>
                       <div className="text-sm text-gray-500">{new Date(a.assigned_at).toLocaleDateString('de-CH')}</div>
                     </div>
                     <div className="text-right">
-                      {a.price_charged && <div className="font-medium">CHF {a.price_charged}</div>}
-                      <span className={`badge ${a.status === 'sent' ? 'badge-warning' : a.status === 'success' ? 'badge-success' : 'badge-danger'}`}>
-                        {a.status === 'sent' ? 'Gesendet' : a.status === 'success' ? 'Erfolgreich' : 'Zurueck'}
-                      </span>
+                      {formatPricing(a)}
+                      <div className="mt-1">
+                        <span className={`badge ${a.status === 'sent' ? 'badge-warning' : a.status === 'success' ? 'badge-success' : 'badge-danger'}`}>
+                          {a.status === 'sent' ? 'Gesendet' : a.status === 'success' ? 'Erfolgreich' : 'Zurueck'}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -229,7 +249,43 @@ function AssignModal(props: { lead: Lead; brokers: Broker[]; onClose: () => void
   const [loading, setLoading] = useState(false)
   const [brokerId, setBrokerId] = useState(props.brokers[0]?.id || '')
   const [price, setPrice] = useState(35)
+  const [contract, setContract] = useState<Contract | null>(null)
+  const [loadingContract, setLoadingContract] = useState(false)
   const [result, setResult] = useState<{ success?: boolean; email_sent?: boolean; error?: string } | null>(null)
+
+  // Load contract when broker changes
+  useEffect(() => {
+    loadContract(brokerId)
+  }, [brokerId, props.lead.category_id])
+
+  async function loadContract(broker_id: string) {
+    if (!broker_id) return
+    setLoadingContract(true)
+    
+    // Try category-specific contract first
+    let { data: contractData } = await supabase
+      .from('contracts')
+      .select('*')
+      .eq('broker_id', broker_id)
+      .eq('category_id', props.lead.category_id)
+      .eq('status', 'active')
+      .single()
+
+    // If no category-specific, try general contract
+    if (!contractData) {
+      const { data: generalContract } = await supabase
+        .from('contracts')
+        .select('*')
+        .eq('broker_id', broker_id)
+        .is('category_id', null)
+        .eq('status', 'active')
+        .single()
+      contractData = generalContract
+    }
+
+    setContract(contractData)
+    setLoadingContract(false)
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -240,7 +296,11 @@ function AssignModal(props: { lead: Lead; brokers: Broker[]; onClose: () => void
       const res = await fetch('/api/assign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lead_id: props.lead.id, broker_id: brokerId, price })
+        body: JSON.stringify({ 
+          lead_id: props.lead.id, 
+          broker_id: brokerId, 
+          price: contract ? undefined : price // Only send price if no contract
+        })
       })
       const data = await res.json()
       
@@ -254,6 +314,46 @@ function AssignModal(props: { lead: Lead; brokers: Broker[]; onClose: () => void
       setResult({ error: 'Netzwerkfehler' })
     }
     setLoading(false)
+  }
+
+  const renderContractInfo = () => {
+    if (loadingContract) {
+      return <div className="text-gray-500 text-sm">Lade Vertrag...</div>
+    }
+    if (!contract) {
+      return (
+        <div>
+          <div className="mb-2 p-2 bg-yellow-50 text-yellow-700 rounded text-sm">
+            Kein aktiver Vertrag gefunden
+          </div>
+          <label className="input-label">Preis (CHF)</label>
+          <input type="number" value={price} onChange={(e) => setPrice(+e.target.value)} className="input" />
+        </div>
+      )
+    }
+    
+    if (contract.pricing_model === 'revenue_share') {
+      return (
+        <div className="p-3 bg-purple-50 text-purple-700 rounded-lg">
+          <div className="font-medium">Beteiligungsvertrag</div>
+          <div className="text-lg">{contract.revenue_share_percent}% bei Abschluss</div>
+        </div>
+      )
+    } else if (contract.pricing_model === 'subscription') {
+      return (
+        <div className="p-3 bg-blue-50 text-blue-700 rounded-lg">
+          <div className="font-medium">Abo-Vertrag</div>
+          <div className="text-lg">CHF {contract.monthly_fee}/Monat</div>
+        </div>
+      )
+    } else {
+      return (
+        <div className="p-3 bg-green-50 text-green-700 rounded-lg">
+          <div className="font-medium">Fixpreis-Vertrag</div>
+          <div className="text-lg">CHF {contract.price_per_lead} pro Lead</div>
+        </div>
+      )
+    }
   }
 
   return (
@@ -279,10 +379,12 @@ function AssignModal(props: { lead: Lead; brokers: Broker[]; onClose: () => void
               {props.brokers.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </div>
+          
           <div>
-            <label className="input-label">Preis (CHF)</label>
-            <input type="number" value={price} onChange={(e) => setPrice(+e.target.value)} className="input" />
+            <label className="input-label">Preismodell</label>
+            {renderContractInfo()}
           </div>
+
           <div className="flex justify-end gap-3">
             <button type="button" onClick={props.onClose} className="btn btn-secondary">Abbrechen</button>
             <button type="submit" disabled={loading || result?.success} className="btn btn-primary">
