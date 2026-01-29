@@ -21,7 +21,7 @@ export default function FollowupPage() {
 
   useEffect(() => {
     loadAssignment()
-  }, [params.id, token])
+  }, [])
 
   async function loadAssignment() {
     try {
@@ -39,8 +39,11 @@ export default function FollowupPage() {
     setLoading(false)
   }
 
-  async function submitFeedback() {
-    if (!selectedStatus) return
+  async function submitFeedback(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    if (!selectedStatus || submitting) return
     setSubmitting(true)
 
     try {
@@ -75,7 +78,7 @@ export default function FollowupPage() {
     )
   }
 
-  if (error) {
+  if (error && !assignment) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9' }}>
         <div style={{ background: 'white', padding: '40px', borderRadius: '16px', textAlign: 'center', maxWidth: '400px' }}>
@@ -104,6 +107,11 @@ export default function FollowupPage() {
               Herzlichen Glückwunsch zum Abschluss! Die Provision wird verrechnet.
             </p>
           )}
+          {(selectedStatus === 'reached' || selectedStatus === 'scheduled') && (
+            <p style={{ color: '#3b82f6', marginTop: '16px', fontSize: '14px' }}>
+              Wir melden uns in 3 Tagen wieder für ein Update.
+            </p>
+          )}
         </div>
       </div>
     )
@@ -120,7 +128,6 @@ export default function FollowupPage() {
     <div style={{ minHeight: '100vh', background: '#f1f5f9', padding: '40px 20px' }}>
       <div style={{ maxWidth: '500px', margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <img src="/logo.png" alt="LeadsHub" style={{ height: '40px', marginBottom: '24px' }} />
           <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#1e293b', marginBottom: '8px' }}>Lead Feedback</h1>
           <p style={{ color: '#64748b' }}>Wie ist der Stand mit diesem Lead?</p>
         </div>
@@ -154,7 +161,7 @@ export default function FollowupPage() {
                 const Icon = option.icon
                 const isSelected = selectedStatus === option.id
                 return (
-                  <button
+                  <div
                     key={option.id}
                     onClick={() => setSelectedStatus(option.id as FeedbackStatus)}
                     style={{
@@ -185,7 +192,7 @@ export default function FollowupPage() {
                       <div style={{ fontWeight: 600, color: '#1e293b' }}>{option.label}</div>
                       <div style={{ fontSize: '13px', color: '#64748b' }}>{option.description}</div>
                     </div>
-                  </button>
+                  </div>
                 )
               })}
             </div>
@@ -224,11 +231,24 @@ export default function FollowupPage() {
             />
           </div>
 
+          {error && (
+            <div style={{ marginBottom: '16px', padding: '12px', background: '#fee2e2', color: '#991b1b', borderRadius: '8px', fontSize: '14px' }}>
+              {error}
+            </div>
+          )}
+
           <button
+            type="button"
             onClick={submitFeedback}
             disabled={!selectedStatus || submitting}
             className="btn btn-primary"
-            style={{ width: '100%', padding: '14px', fontSize: '16px' }}
+            style={{ 
+              width: '100%', 
+              padding: '14px', 
+              fontSize: '16px',
+              opacity: (!selectedStatus || submitting) ? 0.5 : 1,
+              cursor: (!selectedStatus || submitting) ? 'not-allowed' : 'pointer'
+            }}
           >
             {submitting ? 'Wird gespeichert...' : 'Feedback absenden'}
           </button>
