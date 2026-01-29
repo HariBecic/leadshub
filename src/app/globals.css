@@ -38,13 +38,6 @@ body {
   width: auto !important;
 }
 
-/* Hide logo on mobile in sidebar */
-@media (max-width: 768px) {
-  .sidebar-logo.desktop-only {
-    display: none !important;
-  }
-}
-
 .sidebar-link {
   display: flex;
   align-items: center;
@@ -84,7 +77,7 @@ body {
   left: 0;
   right: 0;
   height: 64px;
-  background: rgba(30, 27, 75, 0.9);
+  background: rgba(30, 27, 75, 0.95);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   z-index: 200;
@@ -419,7 +412,7 @@ p, span, div, td, label {
   color: white;
 }
 
-/* ===== MOBILE STYLES ===== */
+/* ===== TABLET ===== */
 @media (max-width: 1024px) {
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
@@ -430,14 +423,23 @@ p, span, div, td, label {
   }
 }
 
+/* ===== MOBILE ===== */
 @media (max-width: 768px) {
+  /* Sidebar below header on mobile */
   .sidebar {
     transform: translateX(-100%);
-    padding-top: 24px;
+    top: 64px;
+    min-height: calc(100vh - 64px);
+    padding-top: 16px;
   }
 
   .sidebar.open {
     transform: translateX(0);
+  }
+
+  /* Hide logo in sidebar on mobile */
+  .sidebar-logo.desktop-only {
+    display: none !important;
   }
 
   .mobile-header {
@@ -462,7 +464,6 @@ p, span, div, td, label {
     font-size: 24px;
   }
 
-  /* Stats Grid - 2 columns on mobile */
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 12px;
@@ -486,7 +487,6 @@ p, span, div, td, label {
     font-size: 12px;
   }
 
-  /* Revenue Grid - 1 column on mobile */
   .revenue-grid {
     grid-template-columns: 1fr;
     gap: 12px;
@@ -496,7 +496,6 @@ p, span, div, td, label {
     padding: 20px;
   }
 
-  /* Two Column Grid - 1 column on mobile */
   .two-col-grid {
     grid-template-columns: 1fr;
     gap: 16px;
