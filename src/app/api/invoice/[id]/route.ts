@@ -11,7 +11,6 @@ export async function GET(
 ) {
   const { id } = await params
 
-  // Get invoice with items and broker
   const { data: invoice } = await supabase
     .from('invoices')
     .select('*, broker:brokers(*)')
@@ -27,18 +26,19 @@ export async function GET(
     .select('*')
     .eq('invoice_id', id)
 
-  // Generate HTML for PDF
+  const baseUrl = request.nextUrl.origin
+
   const html = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
+  <title>Rechnung ${invoice.invoice_number}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: system-ui, -apple-system, sans-serif; padding: 40px; color: #1e293b; }
-    .header { display: flex; justify-content: space-between; margin-bottom: 40px; }
-    .logo { font-size: 28px; font-weight: 700; color: #3A29A6; }
-    .logo span { color: #F26444; }
+    body { font-family: system-ui, -apple-system, sans-serif; padding: 40px; color: #1e293b; max-width: 800px; margin: 0 auto; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; }
+    .logo img { height: 50px; }
     .invoice-title { font-size: 32px; font-weight: 700; color: #3A29A6; text-align: right; }
     .invoice-number { color: #64748b; text-align: right; margin-top: 4px; }
     .addresses { display: flex; justify-content: space-between; margin-bottom: 40px; }
@@ -63,11 +63,24 @@ export async function GET(
     .status { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
     .status-pending { background: #fef3c7; color: #92400e; }
     .status-paid { background: #dcfce7; color: #166534; }
+    @media print {
+      body { padding: 20px; }
+      .no-print { display: none; }
+    }
   </style>
 </head>
 <body>
+  <div class="no-print" style="margin-bottom: 20px; padding: 12px; background: #dbeafe; border-radius: 8px; text-align: center;">
+    <button onclick="window.print()" style="background: #3A29A6; color: white; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 600; cursor: pointer;">
+      Als PDF drucken / speichern
+    </button>
+  </div>
+
   <div class="header">
-    <div class="logo">leads<span>hub</span></div>
+    <div class="logo">
+      <img src="${baseUrl}/logo.png" alt="LeadsHub" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+      <div style="display: none; font-size: 28px; font-weight: 700; color: #3A29A6;">leads<span style="color: #F26444;">hub</span></div>
+    </div>
     <div>
       <div class="invoice-title">RECHNUNG</div>
       <div class="invoice-number">${invoice.invoice_number}</div>
