@@ -4,7 +4,7 @@ import Sidebar from "@/components/Sidebar";
 
 export const metadata: Metadata = {
   title: "LeadsHub - Lead Management",
-  description: "Lead Distribution & Broker Management Platform",
+  description: "Lead Distribution und Broker Management",
 };
 
 export default function RootLayout({
@@ -14,10 +14,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="de">
-      <body className="antialiased">
-        <div className="flex min-h-screen">
+      <body>
+        <div className="layout">
           <Sidebar />
-          <main className="flex-1 p-8">
+          <main className="main-content">
             {children}
           </main>
         </div>

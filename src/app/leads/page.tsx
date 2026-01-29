@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase, Lead, Broker } from '@/lib/supabase'
-import { Search, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 
 interface Contract {
   id: string
@@ -33,71 +33,63 @@ export default function LeadsPage() {
     (l.first_name + ' ' + l.last_name + ' ' + l.email).toLowerCase().includes(search.toLowerCase())
   )
 
-  const statusBadge = (status: string) => {
-    switch (status) {
-      case 'new': return <span className="badge badge-success">new</span>
-      case 'assigned': return <span className="badge badge-warning">assigned</span>
-      case 'closed': return <span className="badge badge-info">closed</span>
-      default: return <span className="badge badge-neutral">{status}</span>
-    }
-  }
-
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Leads</h1>
-        <button onClick={() => setShowModal(true)} className="btn btn-primary flex items-center gap-2">
+      <div className="page-header">
+        <h1 className="page-title">Leads</h1>
+        <button onClick={() => setShowModal(true)} className="btn btn-primary">
           <Plus size={20} />Neuer Lead
         </button>
       </div>
 
-      <div className="card mb-6">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-          <input 
-            type="text" 
-            placeholder="Suche..." 
-            value={search} 
-            onChange={(e) => setSearch(e.target.value)}
-            className="input pl-10"
-          />
-        </div>
+      <div className="card" style={{ marginBottom: '24px', padding: '16px 24px' }}>
+        <input 
+          type="text" 
+          placeholder="Suche nach Name oder E-Mail..." 
+          value={search} 
+          onChange={(e) => setSearch(e.target.value)}
+          className="input input-search"
+        />
       </div>
 
       <div className="card">
-        <table className="w-full">
+        <table className="table">
           <thead>
-            <tr className="text-left text-gray-500 border-b">
-              <th className="pb-3">ID</th>
-              <th className="pb-3">Name</th>
-              <th className="pb-3">Kontakt</th>
-              <th className="pb-3">Kategorie</th>
-              <th className="pb-3">Status</th>
-              <th className="pb-3"></th>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Kontakt</th>
+              <th>Kategorie</th>
+              <th>Status</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((lead) => (
-              <tr key={lead.id} className="border-b last:border-0 hover:bg-gray-50">
-                <td className="py-4">
-                  <Link href={`/leads/${lead.id}`} className="text-blue-600 hover:underline">#{lead.lead_number}</Link>
+              <tr key={lead.id}>
+                <td>
+                  <Link href={`/leads/${lead.id}`}>#{lead.lead_number}</Link>
                 </td>
-                <td className="py-4">
-                  <Link href={`/leads/${lead.id}`} className="font-medium hover:text-blue-600">{lead.first_name} {lead.last_name}</Link>
+                <td>
+                  <Link href={`/leads/${lead.id}`} style={{ fontWeight: 500, color: '#1e293b' }}>{lead.first_name} {lead.last_name}</Link>
                 </td>
-                <td className="py-4 text-gray-500">
+                <td style={{ color: '#64748b' }}>
                   <div>{lead.email}</div>
                   <div>{lead.phone}</div>
                 </td>
-                <td className="py-4">
+                <td>
                   {lead.category && <span className="badge badge-info">{(lead.category as any)?.name}</span>}
                 </td>
-                <td className="py-4">{statusBadge(lead.status)}</td>
-                <td className="py-4">
+                <td>
+                  <span className={`badge ${lead.status === 'new' ? 'badge-success' : lead.status === 'assigned' ? 'badge-warning' : 'badge-neutral'}`}>
+                    {lead.status === 'new' ? 'Neu' : lead.status === 'assigned' ? 'Zugewiesen' : lead.status}
+                  </span>
+                </td>
+                <td>
                   {(lead.status === 'new' || lead.status === 'available') && (
                     <button 
                       onClick={() => { setSelectedLead(lead); setShowAssignModal(true) }}
-                      className="btn btn-secondary btn-sm"
+                      className="btn btn-accent btn-sm"
                     >
                       Zuweisen
                     </button>
@@ -140,19 +132,20 @@ function NewLeadModal(props: { onClose: () => void; onSave: () => void }) {
   return (
     <div className="modal-overlay" onClick={props.onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-xl font-bold mb-4">Neuer Lead</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+        <h2>Neuer Lead</h2>
+        <p style={{ color: '#64748b', marginBottom: '24px' }}>Erfasse einen neuen Lead manuell</p>
+        <form onSubmit={handleSubmit}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
             <div><label className="input-label">Vorname</label><input value={form.first_name} onChange={(e) => setForm({...form, first_name: e.target.value})} className="input" required /></div>
             <div><label className="input-label">Nachname</label><input value={form.last_name} onChange={(e) => setForm({...form, last_name: e.target.value})} className="input" required /></div>
           </div>
-          <div><label className="input-label">E-Mail</label><input type="email" value={form.email} onChange={(e) => setForm({...form, email: e.target.value})} className="input" /></div>
-          <div><label className="input-label">Telefon</label><input value={form.phone} onChange={(e) => setForm({...form, phone: e.target.value})} className="input" /></div>
-          <div className="grid grid-cols-2 gap-4">
+          <div style={{ marginBottom: '16px' }}><label className="input-label">E-Mail</label><input type="email" value={form.email} onChange={(e) => setForm({...form, email: e.target.value})} className="input" /></div>
+          <div style={{ marginBottom: '16px' }}><label className="input-label">Telefon</label><input value={form.phone} onChange={(e) => setForm({...form, phone: e.target.value})} className="input" /></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
             <div><label className="input-label">PLZ</label><input value={form.plz} onChange={(e) => setForm({...form, plz: e.target.value})} className="input" /></div>
             <div><label className="input-label">Ort</label><input value={form.ort} onChange={(e) => setForm({...form, ort: e.target.value})} className="input" /></div>
           </div>
-          <div className="flex justify-end gap-3">
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
             <button type="button" onClick={props.onClose} className="btn btn-secondary">Abbrechen</button>
             <button type="submit" disabled={loading} className="btn btn-primary">{loading ? '...' : 'Speichern'}</button>
           </div>
@@ -234,12 +227,12 @@ function AssignModal(props: { lead: Lead; brokers: Broker[]; onClose: () => void
 
   const renderContractInfo = () => {
     if (loadingContract) {
-      return <div className="text-gray-500 text-sm">Lade Vertrag...</div>
+      return <div style={{ color: '#64748b', fontSize: '14px' }}>Lade Vertrag...</div>
     }
     if (!contract) {
       return (
         <div>
-          <div className="mb-2 p-2 bg-yellow-50 text-yellow-700 rounded text-sm">
+          <div style={{ marginBottom: '12px', padding: '12px', background: '#fef3c7', color: '#92400e', borderRadius: '8px', fontSize: '14px' }}>
             Kein aktiver Vertrag gefunden
           </div>
           <label className="input-label">Preis (CHF)</label>
@@ -250,23 +243,23 @@ function AssignModal(props: { lead: Lead; brokers: Broker[]; onClose: () => void
     
     if (contract.pricing_model === 'revenue_share') {
       return (
-        <div className="p-3 bg-purple-50 text-purple-700 rounded-lg">
-          <div className="font-medium">Beteiligungsvertrag</div>
-          <div className="text-lg">{contract.revenue_share_percent}% bei Abschluss</div>
+        <div style={{ padding: '16px', background: '#f3e8ff', color: '#7c3aed', borderRadius: '10px' }}>
+          <div style={{ fontWeight: 600, marginBottom: '4px' }}>Beteiligungsvertrag</div>
+          <div style={{ fontSize: '20px', fontWeight: 700 }}>{contract.revenue_share_percent}% bei Abschluss</div>
         </div>
       )
     } else if (contract.pricing_model === 'subscription') {
       return (
-        <div className="p-3 bg-blue-50 text-blue-700 rounded-lg">
-          <div className="font-medium">Abo-Vertrag</div>
-          <div className="text-lg">CHF {contract.monthly_fee}/Monat</div>
+        <div style={{ padding: '16px', background: '#dbeafe', color: '#2563eb', borderRadius: '10px' }}>
+          <div style={{ fontWeight: 600, marginBottom: '4px' }}>Abo-Vertrag</div>
+          <div style={{ fontSize: '20px', fontWeight: 700 }}>CHF {contract.monthly_fee}/Monat</div>
         </div>
       )
     } else {
       return (
-        <div className="p-3 bg-green-50 text-green-700 rounded-lg">
-          <div className="font-medium">Fixpreis-Vertrag</div>
-          <div className="text-lg">CHF {contract.price_per_lead} pro Lead</div>
+        <div style={{ padding: '16px', background: '#dcfce7', color: '#166534', borderRadius: '10px' }}>
+          <div style={{ fontWeight: 600, marginBottom: '4px' }}>Fixpreis-Vertrag</div>
+          <div style={{ fontSize: '20px', fontWeight: 700 }}>CHF {contract.price_per_lead} pro Lead</div>
         </div>
       )
     }
@@ -275,33 +268,33 @@ function AssignModal(props: { lead: Lead; brokers: Broker[]; onClose: () => void
   return (
     <div className="modal-overlay" onClick={props.onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-xl font-bold mb-4">Lead zuweisen</h2>
-        <p className="mb-4 text-gray-600">{props.lead.first_name} {props.lead.last_name}</p>
+        <h2>Lead zuweisen</h2>
+        <p style={{ color: '#64748b', marginBottom: '24px' }}>{props.lead.first_name} {props.lead.last_name}</p>
         
         {result?.success && (
-          <div className="mb-4 p-3 bg-green-50 text-green-700 rounded-lg">
-            Lead erfolgreich zugewiesen! {result.email_sent ? 'E-Mail wurde gesendet.' : 'E-Mail konnte nicht gesendet werden.'}
+          <div style={{ marginBottom: '16px', padding: '14px', background: '#dcfce7', color: '#166534', borderRadius: '10px' }}>
+            Lead erfolgreich zugewiesen! {result.email_sent ? 'E-Mail wurde gesendet.' : ''}
           </div>
         )}
         
         {result?.error && (
-          <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg">{result.error}</div>
+          <div style={{ marginBottom: '16px', padding: '14px', background: '#fee2e2', color: '#991b1b', borderRadius: '10px' }}>{result.error}</div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: '20px' }}>
             <label className="input-label">Broker</label>
             <select value={brokerId} onChange={(e) => setBrokerId(e.target.value)} className="select">
               {props.brokers.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </div>
           
-          <div>
+          <div style={{ marginBottom: '24px' }}>
             <label className="input-label">Preismodell</label>
             {renderContractInfo()}
           </div>
 
-          <div className="flex justify-end gap-3">
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
             <button type="button" onClick={props.onClose} className="btn btn-secondary">Abbrechen</button>
             <button type="submit" disabled={loading || result?.success} className="btn btn-primary">
               {loading ? 'Wird zugewiesen...' : 'Zuweisen & E-Mail senden'}
