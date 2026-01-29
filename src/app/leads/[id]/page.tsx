@@ -131,7 +131,7 @@ export default function LeadDetailPage() {
               {lead.email && <div className="flex items-center gap-3"><Mail className="text-gray-400" size={20} /><a href={`mailto:${lead.email}`} className="text-blue-600 hover:underline">{lead.email}</a></div>}
               {lead.phone && <div className="flex items-center gap-3"><Phone className="text-gray-400" size={20} /><a href={`tel:${lead.phone}`} className="text-blue-600 hover:underline">{lead.phone}</a></div>}
               {(lead.plz || lead.ort) && <div className="flex items-center gap-3"><MapPin className="text-gray-400" size={20} /><span>{lead.plz} {lead.ort}</span></div>}
-              {lead.category && <div className="flex items-center gap-3"><Tag className="text-gray-400" size={20} /><span className="badge badge-info">{(lead.category as Record<string, unknown>).name as string}</span></div>}
+              {lead.category && <div className="flex items-center gap-3"><Tag className="text-gray-400" size={20} /><span className="badge badge-info">{(lead.category as any)?.name || ""}</span></div>}
             </div>
           </div>
 
@@ -183,7 +183,7 @@ export default function LeadDetailPage() {
                 {assignments.map((a) => (
                   <div key={a.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div>
-                      <div className="font-medium">{(a.broker as Record<string, unknown>)?.name as string}</div>
+                      <div className="font-medium">{(a.broker as any)?.name}</div>
                       <div className="text-sm text-gray-500">{new Date(a.assigned_at).toLocaleDateString('de-CH')}</div>
                     </div>
                     <div className="text-right">
@@ -213,7 +213,7 @@ export default function LeadDetailPage() {
             <h2 className="text-lg font-semibold mb-4">Details</h2>
             <div className="space-y-3 text-sm">
               <div className="flex justify-between"><span className="text-gray-500">Erstellt</span><span>{new Date(lead.created_at).toLocaleDateString('de-CH')}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Quelle</span><span>{(lead.source as Record<string, unknown>)?.name as string || '-'}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Quelle</span><span>{(lead.source as any)?.name || '-'}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">Zuweisungen</span><span>{lead.assignment_count}x</span></div>
             </div>
           </div>
