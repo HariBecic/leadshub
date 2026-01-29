@@ -34,14 +34,12 @@ export default function DashboardPage() {
     const { count: brokersCount } = await supabase.from('brokers').select('*', { count: 'exact', head: true })
     const { count: assignedCount } = await supabase.from('lead_assignments').select('*', { count: 'exact', head: true })
 
-    // Fixed revenue (fixed price + single purchases)
     const { data: fixedAssignments } = await supabase
       .from('lead_assignments')
       .select('price_charged')
       .in('pricing_model', ['fixed', 'single'])
     const fixedRevenue = fixedAssignments?.reduce((sum, a) => sum + (Number(a.price_charged) || 0), 0) || 0
 
-    // Commission revenue (successful deals)
     const { data: commissionAssignments } = await supabase
       .from('lead_assignments')
       .select('commission_amount')
@@ -50,7 +48,6 @@ export default function DashboardPage() {
     const commissionRevenue = commissionAssignments?.reduce((sum, a) => sum + (Number(a.commission_amount) || 0), 0) || 0
     const successfulDeals = commissionAssignments?.length || 0
 
-    // Open invoices
     const { data: openInvoicesData } = await supabase
       .from('invoices')
       .select('*, broker:brokers(name)')
@@ -58,20 +55,17 @@ export default function DashboardPage() {
       .order('created_at', { ascending: false })
     const openInvoicesAmount = openInvoicesData?.reduce((sum, inv) => sum + (Number(inv.amount) || 0), 0) || 0
 
-    // Pending followups
     const { count: followupsCount } = await supabase
       .from('lead_assignments')
       .select('*', { count: 'exact', head: true })
       .eq('followup_status', 'pending')
 
-    // Recent leads
     const { data: recentLeadsData } = await supabase
       .from('leads')
       .select('*, category:lead_categories(name)')
       .order('created_at', { ascending: false })
       .limit(5)
 
-    // Recent commissions
     const { data: recentCommissionsData } = await supabase
       .from('lead_assignments')
       .select('*, lead:leads(first_name, last_name), broker:brokers(name)')
@@ -224,7 +218,7 @@ export default function DashboardPage() {
 
         {/* Recent Commissions */}
         <div className="card">
-          <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '20px', margin: 0, marginBottom: '20px' }}>Letzte Provisionen</h2>
+          <h2 style={{ fontSize: '18px', fontWeight: 600, margin: 0, marginBottom: '20px' }}>Letzte Provisionen</h2>
           {recentCommissions.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '20px', opacity: 0.6 }}>Noch keine Provisionen</div>
           ) : (
