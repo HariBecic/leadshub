@@ -23,7 +23,7 @@ async function getNextInvoiceNumber(): Promise<string> {
   return `${year}-0001`
 }
 
-// POST - Create invoice for single lead purchase
+// POST - Create invoice
 export async function POST(request: NextRequest) {
   const body = await request.json()
   const { broker_id, assignment_id, type = 'single' } = body
@@ -43,9 +43,8 @@ export async function POST(request: NextRequest) {
     const invoiceNumber = await getNextInvoiceNumber()
     const amount = assignment.price_charged || 0
     const dueDate = new Date()
-    dueDate.setDate(dueDate.getDate() + 14) // 14 days payment term
+    dueDate.setDate(dueDate.getDate() + 14)
 
-    // Create invoice
     const { data: invoice, error: invoiceError } = await supabase
       .from('invoices')
       .insert([{
@@ -63,7 +62,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: invoiceError.message }, { status: 500 })
     }
 
-    // Create invoice item
     await supabase
       .from('invoice_items')
       .insert([{
@@ -88,7 +86,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (!contract) {
-      return NextResponse.json({ error: 'No active subscription found' }, { status: 404 })
+      return NextResponse.json({ error: 'Kein aktives Abo gefunden' }, { status: 404 })
     }
 
     const invoiceNumber = await getNextInvoiceNumber()
@@ -130,12 +128,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, invoice })
 
   } else if (type === 'commission' && broker_id) {
-    // Monthly commission invoice (for revenue share)
-    const now = new Date()
-    const periodStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-    const periodEnd = new Date(now.getFullYear(), now.getMonth(), 0)
-
-    // Get all successful assignments with commission in the period
+    // Commission invoice - get ALL unbilled successful assignments with commission
     const { data: assignments } = await supabase
       .from('lead_assignments')
       .select('*, lead:leads(*)')
@@ -143,17 +136,34 @@ export async function POST(request: NextRequest) {
       .eq('pricing_model', 'revenue_share')
       .eq('status', 'success')
       .not('commission_amount', 'is', null)
-      .gte('followup_responded_at', periodStart.toISOString())
-      .lte('followup_responded_at', periodEnd.toISOString())
+      .gt('commission_amount', 0)
 
     if (!assignments || assignments.length === 0) {
-      return NextResponse.json({ error: 'No commissions found for this period' }, { status: 404 })
+      return NextResponse.json({ error: 'Keine offenen Provisionen gefunden' }, { status: 404 })
     }
 
-    const totalAmount = assignments.reduce((sum, a) => sum + (a.commission_amount || 0), 0)
+    // Check which assignments are already invoiced
+    const assignmentIds = assignments.map(a => a.id)
+    const { data: existingItems } = await supabase
+      .from('invoice_items')
+      .select('lead_assignment_id')
+      .in('lead_assignment_id', assignmentIds)
+
+    const invoicedIds = new Set(existingItems?.map(i => i.lead_assignment_id) || [])
+    const uninvoicedAssignments = assignments.filter(a => !invoicedIds.has(a.id))
+
+    if (uninvoicedAssignments.length === 0) {
+      return NextResponse.json({ error: 'Alle Provisionen wurden bereits abgerechnet' }, { status: 404 })
+    }
+
+    const totalAmount = uninvoicedAssignments.reduce((sum, a) => sum + (a.commission_amount || 0), 0)
     const invoiceNumber = await getNextInvoiceNumber()
     const dueDate = new Date()
     dueDate.setDate(dueDate.getDate() + 14)
+
+    const now = new Date()
+    const periodStart = new Date(Math.min(...uninvoicedAssignments.map(a => new Date(a.followup_responded_at).getTime())))
+    const periodEnd = now
 
     const { data: invoice, error } = await supabase
       .from('invoices')
@@ -175,7 +185,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create invoice items for each commission
-    for (const assignment of assignments) {
+    for (const assignment of uninvoicedAssignments) {
       await supabase
         .from('invoice_items')
         .insert([{
@@ -188,7 +198,7 @@ export async function POST(request: NextRequest) {
         }])
     }
 
-    return NextResponse.json({ success: true, invoice })
+    return NextResponse.json({ success: true, invoice, items_count: uninvoicedAssignments.length })
   }
 
   return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
