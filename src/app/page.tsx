@@ -14,13 +14,12 @@ interface Stats {
   successfulDeals: number
   openInvoices: number
   openInvoicesAmount: number
-  pendingFollowups: number
 }
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<Stats>({
     leads: 0, brokers: 0, assigned: 0, fixedRevenue: 0, commissionRevenue: 0,
-    totalRevenue: 0, successfulDeals: 0, openInvoices: 0, openInvoicesAmount: 0, pendingFollowups: 0
+    totalRevenue: 0, successfulDeals: 0, openInvoices: 0, openInvoicesAmount: 0
   })
   const [recentLeads, setRecentLeads] = useState<any[]>([])
   const [openInvoices, setOpenInvoices] = useState<any[]>([])
@@ -40,11 +39,14 @@ export default function DashboardPage() {
       .in('pricing_model', ['fixed', 'single'])
     const fixedRevenue = fixedAssignments?.reduce((sum, a) => sum + (Number(a.price_charged) || 0), 0) || 0
 
+    // Commission revenue - check for commission_amount not null (regardless of status)
     const { data: commissionAssignments } = await supabase
       .from('lead_assignments')
-      .select('commission_amount')
-      .eq('status', 'success')
+      .select('commission_amount, revenue_share_percent, lead:leads(first_name, last_name), broker:brokers(name)')
       .not('commission_amount', 'is', null)
+      .gt('commission_amount', 0)
+      .order('updated_at', { ascending: false })
+    
     const commissionRevenue = commissionAssignments?.reduce((sum, a) => sum + (Number(a.commission_amount) || 0), 0) || 0
     const successfulDeals = commissionAssignments?.length || 0
 
@@ -55,24 +57,11 @@ export default function DashboardPage() {
       .order('created_at', { ascending: false })
     const openInvoicesAmount = openInvoicesData?.reduce((sum, inv) => sum + (Number(inv.amount) || 0), 0) || 0
 
-    const { count: followupsCount } = await supabase
-      .from('lead_assignments')
-      .select('*', { count: 'exact', head: true })
-      .eq('followup_status', 'pending')
-
     const { data: recentLeadsData } = await supabase
       .from('leads')
       .select('*, category:lead_categories(name)')
       .order('created_at', { ascending: false })
       .limit(5)
-
-    const { data: recentCommissionsData } = await supabase
-      .from('lead_assignments')
-      .select('*, lead:leads(first_name, last_name), broker:brokers(name)')
-      .eq('status', 'success')
-      .not('commission_amount', 'is', null)
-      .order('updated_at', { ascending: false })
-      .limit(3)
 
     setStats({
       leads: leadsCount || 0,
@@ -83,13 +72,12 @@ export default function DashboardPage() {
       totalRevenue: fixedRevenue + commissionRevenue,
       successfulDeals,
       openInvoices: openInvoicesData?.length || 0,
-      openInvoicesAmount,
-      pendingFollowups: followupsCount || 0
+      openInvoicesAmount
     })
 
     setRecentLeads(recentLeadsData || [])
     setOpenInvoices(openInvoicesData || [])
-    setRecentCommissions(recentCommissionsData || [])
+    setRecentCommissions(commissionAssignments?.slice(0, 3) || [])
     setLoading(false)
   }
 
@@ -112,33 +100,44 @@ export default function DashboardPage() {
         <h1 className="page-title">Dashboard</h1>
       </div>
 
-      {/* Stats Grid */}
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="icon primary"><Zap size={24} /></div>
-          <div className="value">{stats.leads}</div>
-          <div className="label">Leads total</div>
+      {/* Stats Grid - Fixed Height */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '28px' }}>
+        <div style={{ background: 'rgba(255, 255, 255, 0.12)', backdropFilter: 'blur(20px)', borderRadius: '20px', padding: '24px', border: '1px solid rgba(255, 255, 255, 0.15)', height: '160px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ width: '52px', height: '52px', borderRadius: '16px', background: 'rgba(77, 59, 191, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+            <Zap size={24} color="white" />
+          </div>
+          <div style={{ fontSize: '32px', fontWeight: 700, marginBottom: '4px' }}>{stats.leads}</div>
+          <div style={{ fontSize: '14px', opacity: 0.7 }}>Leads total</div>
         </div>
-        <div className="stat-card">
-          <div className="icon accent"><TrendingUp size={24} /></div>
-          <div className="value">{stats.assigned}</div>
-          <div className="label">Zugewiesen</div>
+        
+        <div style={{ background: 'rgba(255, 255, 255, 0.12)', backdropFilter: 'blur(20px)', borderRadius: '20px', padding: '24px', border: '1px solid rgba(255, 255, 255, 0.15)', height: '160px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ width: '52px', height: '52px', borderRadius: '16px', background: 'rgba(242, 100, 68, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+            <TrendingUp size={24} color="white" />
+          </div>
+          <div style={{ fontSize: '32px', fontWeight: 700, marginBottom: '4px' }}>{stats.assigned}</div>
+          <div style={{ fontSize: '14px', opacity: 0.7 }}>Zugewiesen</div>
         </div>
-        <div className="stat-card">
-          <div className="icon success"><Users size={24} /></div>
-          <div className="value">{stats.brokers}</div>
-          <div className="label">Broker</div>
+        
+        <div style={{ background: 'rgba(255, 255, 255, 0.12)', backdropFilter: 'blur(20px)', borderRadius: '20px', padding: '24px', border: '1px solid rgba(255, 255, 255, 0.15)', height: '160px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ width: '52px', height: '52px', borderRadius: '16px', background: 'rgba(34, 197, 94, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+            <Users size={24} color="white" />
+          </div>
+          <div style={{ fontSize: '32px', fontWeight: 700, marginBottom: '4px' }}>{stats.brokers}</div>
+          <div style={{ fontSize: '14px', opacity: 0.7 }}>Broker</div>
         </div>
-        <div className="stat-card">
-          <div className="icon primary"><DollarSign size={24} /></div>
-          <div className="value">CHF {stats.totalRevenue}</div>
-          <div className="label">Umsatz total</div>
+        
+        <div style={{ background: 'rgba(255, 255, 255, 0.12)', backdropFilter: 'blur(20px)', borderRadius: '20px', padding: '24px', border: '1px solid rgba(255, 255, 255, 0.15)', height: '160px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ width: '52px', height: '52px', borderRadius: '16px', background: 'rgba(77, 59, 191, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+            <DollarSign size={24} color="white" />
+          </div>
+          <div style={{ fontSize: '32px', fontWeight: 700, marginBottom: '4px' }}>CHF {stats.totalRevenue}</div>
+          <div style={{ fontSize: '14px', opacity: 0.7 }}>Umsatz total</div>
         </div>
       </div>
 
-      {/* Revenue Breakdown */}
+      {/* Revenue Breakdown - Fixed Height */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '28px' }}>
-        <div className="card" style={{ background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)', border: 'none' }}>
+        <div style={{ background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)', borderRadius: '20px', padding: '24px', height: '140px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
             <DollarSign size={20} />
             <span style={{ fontSize: '14px', opacity: 0.9 }}>Fixpreis-Einnahmen</span>
@@ -147,7 +146,7 @@ export default function DashboardPage() {
           <div style={{ fontSize: '13px', opacity: 0.8, marginTop: '4px' }}>Einzelkäufe & Fixpreis-Verträge</div>
         </div>
 
-        <div className="card" style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%)', border: 'none' }}>
+        <div style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%)', borderRadius: '20px', padding: '24px', height: '140px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
             <Percent size={20} />
             <span style={{ fontSize: '14px', opacity: 0.9 }}>Provisionen (Beteiligung)</span>
@@ -156,7 +155,7 @@ export default function DashboardPage() {
           <div style={{ fontSize: '13px', opacity: 0.8, marginTop: '4px' }}>{stats.successfulDeals} erfolgreiche Abschlüsse</div>
         </div>
 
-        <div className="card" style={{ background: 'linear-gradient(135deg, #ea580c 0%, #f97316 100%)', border: 'none' }}>
+        <div style={{ background: 'linear-gradient(135deg, #ea580c 0%, #f97316 100%)', borderRadius: '20px', padding: '24px', height: '140px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
             <Clock size={20} />
             <span style={{ fontSize: '14px', opacity: 0.9 }}>Gesamt-Umsatz</span>
@@ -222,8 +221,8 @@ export default function DashboardPage() {
           {recentCommissions.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '20px', opacity: 0.6 }}>Noch keine Provisionen</div>
           ) : (
-            recentCommissions.map((c) => (
-              <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(139, 92, 246, 0.15)', borderRadius: '10px', marginBottom: '8px' }}>
+            recentCommissions.map((c, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(139, 92, 246, 0.15)', borderRadius: '10px', marginBottom: '8px' }}>
                 <div>
                   <div style={{ fontWeight: 600, color: '#c4b5fd' }}>{c.lead?.first_name} {c.lead?.last_name}</div>
                   <div style={{ fontSize: '13px', opacity: 0.7 }}>{c.broker?.name} • {c.revenue_share_percent}%</div>
