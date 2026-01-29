@@ -226,6 +226,104 @@ export default function LeadDetailPage() {
         </div>
       </div>
 
+      {/* Extra Data */}
+      {lead.extra_data && Object.keys(lead.extra_data).length > 0 && (
+        <div className="card" style={{ marginBottom: '24px' }}>
+          <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '20px' }}>Zusätzliche Informationen</h2>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+            {/* Lead Info */}
+            {lead.extra_data.lead && (
+              <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '12px', padding: '16px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: '#a5b4fc' }}>Lead-Daten</h3>
+                <div style={{ display: 'grid', gap: '8px' }}>
+                  {Object.entries(lead.extra_data.lead).map(([key, value]) => (
+                    value && (
+                      <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                        <span style={{ opacity: 0.6, textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</span>
+                        <span style={{ fontWeight: 500 }}>{String(value)}</span>
+                      </div>
+                    )
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Details */}
+            {lead.extra_data.details && Object.values(lead.extra_data.details).some(v => v) && (
+              <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '12px', padding: '16px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: '#86efac' }}>Versicherungs-Details</h3>
+                <div style={{ display: 'grid', gap: '8px' }}>
+                  {Object.entries(lead.extra_data.details).map(([key, value]) => (
+                    value && (
+                      <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                        <span style={{ opacity: 0.6, textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</span>
+                        <span style={{ fontWeight: 500 }}>{String(value)}</span>
+                      </div>
+                    )
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Zusatz (Add-ons) */}
+            {lead.extra_data.zusatz && Object.values(lead.extra_data.zusatz).some(v => v) && (
+              <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '12px', padding: '16px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: '#fde047' }}>Zusatzversicherungen</h3>
+                <div style={{ display: 'grid', gap: '8px' }}>
+                  {Object.entries(lead.extra_data.zusatz).map(([key, value]) => (
+                    value && (
+                      <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                        <span style={{ opacity: 0.6, textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</span>
+                        <span style={{ fontWeight: 500 }}>{String(value)}</span>
+                      </div>
+                    )
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Persons */}
+            {lead.extra_data.persons && lead.extra_data.persons.length > 0 && (
+              <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '12px', padding: '16px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: '#c4b5fd' }}>Versicherte Personen</h3>
+                {lead.extra_data.persons.map((person: any, index: number) => (
+                  <div key={index} style={{ marginBottom: index < lead.extra_data.persons.length - 1 ? '16px' : 0, paddingBottom: index < lead.extra_data.persons.length - 1 ? '16px' : 0, borderBottom: index < lead.extra_data.persons.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none' }}>
+                    <div style={{ fontWeight: 600, marginBottom: '8px' }}>{person.name || `Person ${index + 1}`}</div>
+                    <div style={{ display: 'grid', gap: '4px', fontSize: '13px' }}>
+                      {person.geburtsdatum && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ opacity: 0.6 }}>Geburtsdatum</span>
+                          <span>{person.geburtsdatum}</span>
+                        </div>
+                      )}
+                      {person.geschlecht && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ opacity: 0.6 }}>Geschlecht</span>
+                          <span style={{ textTransform: 'capitalize' }}>{person.geschlecht}</span>
+                        </div>
+                      )}
+                      {person.franchise && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ opacity: 0.6 }}>Franchise</span>
+                          <span>CHF {person.franchise}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Source & Timestamp */}
+          <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: '24px', fontSize: '13px', opacity: 0.6 }}>
+            {lead.extra_data.source && <span>Quelle: {lead.extra_data.source}</span>}
+            {lead.extra_data.timestamp && <span>Erfasst: {new Date(lead.extra_data.timestamp).toLocaleString('de-CH')}</span>}
+          </div>
+        </div>
+      )}
+
       {/* Assign Modal */}
       {showAssignModal && (
         <div className="modal-overlay" onClick={() => setShowAssignModal(false)}>
