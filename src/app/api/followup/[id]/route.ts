@@ -8,8 +8,9 @@ const supabase = createClient(supabaseUrl, supabaseKey)
 // GET - Load assignment for feedback page
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params
   const token = request.nextUrl.searchParams.get('token')
   
   if (!token) {
@@ -20,7 +21,7 @@ export async function GET(
   const { data: assignment, error } = await supabase
     .from('lead_assignments')
     .select('*, lead:leads(*), broker:brokers(*)')
-    .eq('id', params.id)
+    .eq('id', id)
     .single()
 
   if (error || !assignment) {
@@ -55,8 +56,9 @@ export async function GET(
 // POST - Submit feedback
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params
   const body = await request.json()
   const { token, status, notes, commission_amount } = body
 
@@ -68,7 +70,7 @@ export async function POST(
   const { data: assignment, error } = await supabase
     .from('lead_assignments')
     .select('*, lead:leads(*)')
-    .eq('id', params.id)
+    .eq('id', id)
     .single()
 
   if (error || !assignment) {
@@ -131,7 +133,7 @@ export async function POST(
       contact_result: notes || null,
       commission_amount: commissionValue
     })
-    .eq('id', params.id)
+    .eq('id', id)
 
   // Update lead status
   await supabase
