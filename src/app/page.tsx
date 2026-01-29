@@ -39,7 +39,6 @@ export default function DashboardPage() {
       .in('pricing_model', ['fixed', 'single'])
     const fixedRevenue = fixedAssignments?.reduce((sum, a) => sum + (Number(a.price_charged) || 0), 0) || 0
 
-    // Commission revenue - check for commission_amount not null (regardless of status)
     const { data: commissionAssignments } = await supabase
       .from('lead_assignments')
       .select('commission_amount, revenue_share_percent, lead:leads(first_name, last_name), broker:brokers(name)')
@@ -100,74 +99,45 @@ export default function DashboardPage() {
         <h1 className="page-title">Dashboard</h1>
       </div>
 
-      {/* Stats Grid - Fixed Height */}
+      {/* Stats Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '28px' }}>
-        <div style={{ background: 'rgba(255, 255, 255, 0.12)', backdropFilter: 'blur(20px)', borderRadius: '20px', padding: '24px', border: '1px solid rgba(255, 255, 255, 0.15)', height: '160px', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ width: '52px', height: '52px', borderRadius: '16px', background: 'rgba(77, 59, 191, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
-            <Zap size={24} color="white" />
+        {[
+          { icon: Zap, value: stats.leads, label: 'Leads total', bg: 'rgba(77, 59, 191, 0.5)' },
+          { icon: TrendingUp, value: stats.assigned, label: 'Zugewiesen', bg: 'rgba(242, 100, 68, 0.5)' },
+          { icon: Users, value: stats.brokers, label: 'Broker', bg: 'rgba(34, 197, 94, 0.5)' },
+          { icon: DollarSign, value: `CHF ${stats.totalRevenue}`, label: 'Umsatz total', bg: 'rgba(77, 59, 191, 0.5)' },
+        ].map((item, i) => (
+          <div key={i} style={{ background: 'rgba(255, 255, 255, 0.12)', backdropFilter: 'blur(20px)', borderRadius: '20px', padding: '24px', border: '1px solid rgba(255, 255, 255, 0.15)', height: '160px' }}>
+            <div style={{ width: '52px', height: '52px', borderRadius: '16px', background: item.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+              <item.icon size={24} color="white" />
+            </div>
+            <div style={{ fontSize: '32px', fontWeight: 700, marginBottom: '4px' }}>{item.value}</div>
+            <div style={{ fontSize: '14px', opacity: 0.7 }}>{item.label}</div>
           </div>
-          <div style={{ fontSize: '32px', fontWeight: 700, marginBottom: '4px' }}>{stats.leads}</div>
-          <div style={{ fontSize: '14px', opacity: 0.7 }}>Leads total</div>
-        </div>
-        
-        <div style={{ background: 'rgba(255, 255, 255, 0.12)', backdropFilter: 'blur(20px)', borderRadius: '20px', padding: '24px', border: '1px solid rgba(255, 255, 255, 0.15)', height: '160px', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ width: '52px', height: '52px', borderRadius: '16px', background: 'rgba(242, 100, 68, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
-            <TrendingUp size={24} color="white" />
-          </div>
-          <div style={{ fontSize: '32px', fontWeight: 700, marginBottom: '4px' }}>{stats.assigned}</div>
-          <div style={{ fontSize: '14px', opacity: 0.7 }}>Zugewiesen</div>
-        </div>
-        
-        <div style={{ background: 'rgba(255, 255, 255, 0.12)', backdropFilter: 'blur(20px)', borderRadius: '20px', padding: '24px', border: '1px solid rgba(255, 255, 255, 0.15)', height: '160px', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ width: '52px', height: '52px', borderRadius: '16px', background: 'rgba(34, 197, 94, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
-            <Users size={24} color="white" />
-          </div>
-          <div style={{ fontSize: '32px', fontWeight: 700, marginBottom: '4px' }}>{stats.brokers}</div>
-          <div style={{ fontSize: '14px', opacity: 0.7 }}>Broker</div>
-        </div>
-        
-        <div style={{ background: 'rgba(255, 255, 255, 0.12)', backdropFilter: 'blur(20px)', borderRadius: '20px', padding: '24px', border: '1px solid rgba(255, 255, 255, 0.15)', height: '160px', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ width: '52px', height: '52px', borderRadius: '16px', background: 'rgba(77, 59, 191, 0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
-            <DollarSign size={24} color="white" />
-          </div>
-          <div style={{ fontSize: '32px', fontWeight: 700, marginBottom: '4px' }}>CHF {stats.totalRevenue}</div>
-          <div style={{ fontSize: '14px', opacity: 0.7 }}>Umsatz total</div>
-        </div>
+        ))}
       </div>
 
-      {/* Revenue Breakdown - Fixed Height */}
+      {/* Revenue Breakdown */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '28px' }}>
-        <div style={{ background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)', borderRadius: '20px', padding: '24px', height: '140px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-            <DollarSign size={20} />
-            <span style={{ fontSize: '14px', opacity: 0.9 }}>Fixpreis-Einnahmen</span>
+        {[
+          { icon: DollarSign, title: 'Fixpreis-Einnahmen', value: stats.fixedRevenue.toFixed(2), sub: 'Einzelkäufe & Fixpreis-Verträge', bg: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)' },
+          { icon: Percent, title: 'Provisionen (Beteiligung)', value: stats.commissionRevenue.toFixed(2), sub: `${stats.successfulDeals} erfolgreiche Abschlüsse`, bg: 'linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%)' },
+          { icon: Clock, title: 'Gesamt-Umsatz', value: stats.totalRevenue.toFixed(2), sub: 'Fixpreis + Provisionen', bg: 'linear-gradient(135deg, #ea580c 0%, #f97316 100%)' },
+        ].map((item, i) => (
+          <div key={i} style={{ background: item.bg, borderRadius: '20px', padding: '24px', height: '140px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+              <item.icon size={20} />
+              <span style={{ fontSize: '14px', opacity: 0.9 }}>{item.title}</span>
+            </div>
+            <div style={{ fontSize: '28px', fontWeight: 700 }}>CHF {item.value}</div>
+            <div style={{ fontSize: '13px', opacity: 0.8, marginTop: '4px' }}>{item.sub}</div>
           </div>
-          <div style={{ fontSize: '28px', fontWeight: 700 }}>CHF {stats.fixedRevenue.toFixed(2)}</div>
-          <div style={{ fontSize: '13px', opacity: 0.8, marginTop: '4px' }}>Einzelkäufe & Fixpreis-Verträge</div>
-        </div>
-
-        <div style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%)', borderRadius: '20px', padding: '24px', height: '140px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-            <Percent size={20} />
-            <span style={{ fontSize: '14px', opacity: 0.9 }}>Provisionen (Beteiligung)</span>
-          </div>
-          <div style={{ fontSize: '28px', fontWeight: 700 }}>CHF {stats.commissionRevenue.toFixed(2)}</div>
-          <div style={{ fontSize: '13px', opacity: 0.8, marginTop: '4px' }}>{stats.successfulDeals} erfolgreiche Abschlüsse</div>
-        </div>
-
-        <div style={{ background: 'linear-gradient(135deg, #ea580c 0%, #f97316 100%)', borderRadius: '20px', padding: '24px', height: '140px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-            <Clock size={20} />
-            <span style={{ fontSize: '14px', opacity: 0.9 }}>Gesamt-Umsatz</span>
-          </div>
-          <div style={{ fontSize: '28px', fontWeight: 700 }}>CHF {stats.totalRevenue.toFixed(2)}</div>
-          <div style={{ fontSize: '13px', opacity: 0.8, marginTop: '4px' }}>Fixpreis + Provisionen</div>
-        </div>
+        ))}
       </div>
 
       {/* Alerts */}
       {stats.openInvoices > 0 && (
-        <div className="card" style={{ marginBottom: '24px', background: 'rgba(251, 191, 36, 0.15)', borderColor: 'rgba(251, 191, 36, 0.3)' }}>
+        <div style={{ background: 'rgba(251, 191, 36, 0.15)', borderRadius: '20px', padding: '24px', border: '1px solid rgba(251, 191, 36, 0.3)', marginBottom: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
               <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(251, 191, 36, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -185,10 +155,9 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Two Column Section */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
-        {/* Open Invoices */}
-        <div className="card">
+      {/* Two Column Section - EXACT SAME SIZE */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '24px', marginBottom: '24px' }}>
+        <div style={{ background: 'rgba(255, 255, 255, 0.1)', backdropFilter: 'blur(20px)', borderRadius: '20px', padding: '24px', border: '1px solid rgba(255, 255, 255, 0.15)', height: '220px', overflow: 'hidden' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h2 style={{ fontSize: '18px', fontWeight: 600, margin: 0 }}>Offene Rechnungen</h2>
             <Link href="/rechnungen" style={{ fontSize: '14px', color: '#a5b4fc', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -196,9 +165,9 @@ export default function DashboardPage() {
             </Link>
           </div>
           {openInvoices.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '20px', opacity: 0.6 }}>Keine offenen Rechnungen</div>
+            <div style={{ textAlign: 'center', padding: '50px 20px', opacity: 0.6 }}>Keine offenen Rechnungen</div>
           ) : (
-            openInvoices.slice(0, 3).map((inv) => (
+            openInvoices.slice(0, 2).map((inv) => (
               <div key={inv.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', marginBottom: '8px' }}>
                 <div>
                   <div style={{ fontWeight: 600 }}>{inv.invoice_number}</div>
@@ -215,13 +184,12 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Recent Commissions */}
-        <div className="card">
+        <div style={{ background: 'rgba(255, 255, 255, 0.1)', backdropFilter: 'blur(20px)', borderRadius: '20px', padding: '24px', border: '1px solid rgba(255, 255, 255, 0.15)', height: '220px', overflow: 'hidden' }}>
           <h2 style={{ fontSize: '18px', fontWeight: 600, margin: 0, marginBottom: '20px' }}>Letzte Provisionen</h2>
           {recentCommissions.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '20px', opacity: 0.6 }}>Noch keine Provisionen</div>
+            <div style={{ textAlign: 'center', padding: '50px 20px', opacity: 0.6 }}>Noch keine Provisionen</div>
           ) : (
-            recentCommissions.map((c, i) => (
+            recentCommissions.slice(0, 2).map((c, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', background: 'rgba(139, 92, 246, 0.15)', borderRadius: '10px', marginBottom: '8px' }}>
                 <div>
                   <div style={{ fontWeight: 600, color: '#c4b5fd' }}>{c.lead?.first_name} {c.lead?.last_name}</div>
@@ -255,9 +223,7 @@ export default function DashboardPage() {
             {recentLeads.map((lead) => (
               <tr key={lead.id}>
                 <td style={{ fontWeight: 500 }}>{lead.first_name} {lead.last_name}</td>
-                <td>
-                  {lead.category && <span className="badge badge-info">{lead.category.name}</span>}
-                </td>
+                <td>{lead.category && <span className="badge badge-info">{lead.category.name}</span>}</td>
                 <td style={{ opacity: 0.7 }}>{new Date(lead.created_at).toLocaleDateString('de-CH')}</td>
                 <td>
                   <span className={`badge ${lead.status === 'new' ? 'badge-success' : lead.status === 'assigned' ? 'badge-warning' : 'badge-neutral'}`}>
