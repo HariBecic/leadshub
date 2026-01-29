@@ -1,11 +1,11 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { CheckCircle, XCircle, Phone, Calendar, Award } from 'lucide-react'
 
 type FeedbackStatus = 'not_reached' | 'reached' | 'scheduled' | 'closed'
 
-export default function FollowupPage() {
+function FollowupContent() {
   const params = useParams()
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(true)
@@ -16,16 +16,25 @@ export default function FollowupPage() {
   const [selectedStatus, setSelectedStatus] = useState<FeedbackStatus | null>(null)
   const [notes, setNotes] = useState('')
   const [commissionAmount, setCommissionAmount] = useState('')
+  const [debugInfo, setDebugInfo] = useState('')
 
   const token = searchParams.get('token')
+  const id = params.id as string
 
   useEffect(() => {
-    loadAssignment()
-  }, [])
+    if (token && id) {
+      loadAssignment()
+    } else {
+      setError('Token oder ID fehlt')
+      setLoading(false)
+    }
+  }, [token, id])
 
   async function loadAssignment() {
     try {
-      const res = await fetch(`/api/followup/${params.id}?token=${token}`)
+      const url = `/api/followup/${id}?token=${token}`
+      setDebugInfo(`Loading: ${url}`)
+      const res = await fetch(url)
       const data = await res.json()
       
       if (data.error) {
@@ -33,8 +42,8 @@ export default function FollowupPage() {
       } else {
         setAssignment(data)
       }
-    } catch {
-      setError('Fehler beim Laden')
+    } catch (e: any) {
+      setError('Fehler beim Laden: ' + e.message)
     }
     setLoading(false)
   }
@@ -45,42 +54,71 @@ export default function FollowupPage() {
     
     if (!selectedStatus || submitting) return
     setSubmitting(true)
+    setError('')
 
     try {
-      const res = await fetch(`/api/followup/${params.id}`, {
+      const url = `/api/followup/${id}`
+      const body = {
+        token,
+        status: selectedStatus,
+        notes,
+        commission_amount: selectedStatus === 'closed' ? parseFloat(commissionAmount) : null
+      }
+      
+      setDebugInfo(`POST to: ${url}, body: ${JSON.stringify(body)}`)
+      
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token,
-          status: selectedStatus,
-          notes,
-          commission_amount: selectedStatus === 'closed' ? parseFloat(commissionAmount) : null
-        })
+        body: JSON.stringify(body)
       })
       const data = await res.json()
+      
+      setDebugInfo(`Response: ${JSON.stringify(data)}`)
       
       if (data.success) {
         setSuccess(true)
       } else {
         setError(data.error || 'Fehler beim Speichern')
+        if (data.details) {
+          setError(`${data.error}: ${data.details}`)
+        }
       }
-    } catch {
-      setError('Netzwerkfehler')
+    } catch (e: any) {
+      setError('Netzwerkfehler: ' + e.message)
     }
     setSubmitting(false)
   }
 
+  // Styles
+  const pageStyle: React.CSSProperties = {
+    minHeight: '100vh',
+    background: '#f1f5f9',
+    padding: '40px 20px',
+    marginLeft: 0,
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9999,
+    overflow: 'auto'
+  }
+
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9' }}>
-        <div className="spinner"></div>
+      <div style={{ ...pageStyle, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div className="spinner" style={{ margin: '0 auto 16px' }}></div>
+          <p>Laden...</p>
+        </div>
       </div>
     )
   }
 
   if (error && !assignment) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9' }}>
+      <div style={{ ...pageStyle, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ background: 'white', padding: '40px', borderRadius: '16px', textAlign: 'center', maxWidth: '400px' }}>
           <XCircle size={48} color="#ef4444" style={{ marginBottom: '16px' }} />
           <h1 style={{ fontSize: '20px', marginBottom: '8px' }}>Fehler</h1>
@@ -92,7 +130,7 @@ export default function FollowupPage() {
 
   if (success) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9' }}>
+      <div style={{ ...pageStyle, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ background: 'white', padding: '40px', borderRadius: '16px', textAlign: 'center', maxWidth: '400px' }}>
           <CheckCircle size={48} color="#22c55e" style={{ marginBottom: '16px' }} />
           <h1 style={{ fontSize: '20px', marginBottom: '8px' }}>Vielen Dank!</h1>
@@ -125,7 +163,7 @@ export default function FollowupPage() {
   ]
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f1f5f9', padding: '40px 20px' }}>
+    <div style={pageStyle}>
       <div style={{ maxWidth: '500px', margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#1e293b', marginBottom: '8px' }}>Lead Feedback</h1>
@@ -208,11 +246,17 @@ export default function FollowupPage() {
                 value={commissionAmount}
                 onChange={(e) => setCommissionAmount(e.target.value)}
                 placeholder="z.B. 500"
-                className="input"
-                style={{ background: '#f8fafc' }}
+                style={{ 
+                  width: '100%', 
+                  padding: '12px 16px', 
+                  border: '2px solid #e2e8f0', 
+                  borderRadius: '10px', 
+                  fontSize: '15px',
+                  background: '#f8fafc' 
+                }}
               />
               <div style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>
-                Deine Beteiligung: {assignment?.revenue_share_percent}% = CHF {commissionAmount ? (parseFloat(commissionAmount) * (assignment?.revenue_share_percent || 0) / 100).toFixed(2) : '0.00'}
+                Unsere Beteiligung: {assignment?.revenue_share_percent}% = CHF {commissionAmount ? (parseFloat(commissionAmount) * (assignment?.revenue_share_percent || 0) / 100).toFixed(2) : '0.00'}
               </div>
             </div>
           )}
@@ -226,8 +270,15 @@ export default function FollowupPage() {
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Weitere Infos zum Lead..."
               rows={3}
-              className="input"
-              style={{ resize: 'none', background: '#f8fafc' }}
+              style={{ 
+                width: '100%', 
+                padding: '12px 16px', 
+                border: '2px solid #e2e8f0', 
+                borderRadius: '10px', 
+                fontSize: '15px',
+                resize: 'none', 
+                background: '#f8fafc' 
+              }}
             />
           </div>
 
@@ -241,12 +292,15 @@ export default function FollowupPage() {
             type="button"
             onClick={submitFeedback}
             disabled={!selectedStatus || submitting}
-            className="btn btn-primary"
             style={{ 
               width: '100%', 
               padding: '14px', 
               fontSize: '16px',
-              opacity: (!selectedStatus || submitting) ? 0.5 : 1,
+              background: (!selectedStatus || submitting) ? '#cbd5e1' : '#3A29A6',
+              color: 'white',
+              border: 'none',
+              borderRadius: '10px',
+              fontWeight: 600,
               cursor: (!selectedStatus || submitting) ? 'not-allowed' : 'pointer'
             }}
           >
@@ -255,5 +309,13 @@ export default function FollowupPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function FollowupPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f1f5f9' }}>Laden...</div>}>
+      <FollowupContent />
+    </Suspense>
   )
 }
