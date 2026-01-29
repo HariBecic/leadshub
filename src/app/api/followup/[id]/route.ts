@@ -5,24 +5,6 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 const supabase = createClient(supabaseUrl, supabaseKey)
 
-// Calculate deadline excluding weekends (48h business hours)
-function calculateDeadline(fromDate: Date): Date {
-  const deadline = new Date(fromDate)
-  let hoursToAdd = 48
-  
-  while (hoursToAdd > 0) {
-    deadline.setHours(deadline.getHours() + 1)
-    const day = deadline.getDay()
-    // Skip weekends (0 = Sunday, 6 = Saturday)
-    if (day !== 0 && day !== 6) {
-      hoursToAdd--
-    }
-  }
-  
-  return deadline
-}
-
-// Calculate next followup date (3 days, skip weekends)
 function calculateNextFollowup(fromDate: Date): Date {
   const next = new Date(fromDate)
   let daysToAdd = 3
@@ -65,10 +47,22 @@ export async function GET(
     return NextResponse.json({ error: 'Ungültiger Token' }, { status: 403 })
   }
 
-  // Allow re-submission for reached/scheduled status (for follow-up updates)
-  const finalStatuses = ['returned', 'success', 'not_reached', 'closed']
-  if (assignment.followup_response && finalStatuses.includes(assignment.followup_response)) {
-    return NextResponse.json({ error: 'Feedback wurde bereits abgegeben' }, { status: 400 })
+  // Final statuses - no more feedback allowed
+  const finalStatuses = ['not_reached', 'closed']
+  if (finalStatuses.includes(assignment.followup_response)) {
+    return NextResponse.json({ error: 'Feedback wurde bereits abgeschlossen' }, { status: 400 })
+  }
+
+  // If already responded and waiting for next followup email
+  if (assignment.followup_response && !assignment.followup_sent_at) {
+    // Check if followup_responded_at is recent (within last hour = just submitted)
+    const respondedAt = new Date(assignment.followup_responded_at)
+    const now = new Date()
+    const hourAgo = new Date(now.getTime() - 60 * 60 * 1000)
+    
+    if (respondedAt > hourAgo) {
+      return NextResponse.json({ error: 'Feedback bereits abgegeben. Wir melden uns in 3 Tagen.' }, { status: 400 })
+    }
   }
 
   return NextResponse.json({
@@ -114,6 +108,12 @@ export async function POST(
     return NextResponse.json({ error: 'Ungültiger Token' }, { status: 403 })
   }
 
+  // Final statuses - no more feedback allowed
+  const finalStatuses = ['not_reached', 'closed']
+  if (finalStatuses.includes(assignment.followup_response)) {
+    return NextResponse.json({ error: 'Feedback wurde bereits abgeschlossen' }, { status: 400 })
+  }
+
   let assignmentStatus = 'sent'
   let leadStatus = 'assigned'
   let contacted = false
@@ -129,14 +129,12 @@ export async function POST(
       assignmentStatus = 'in_progress'
       leadStatus = 'assigned'
       contacted = true
-      // Schedule next followup in 3 business days
       nextFollowupDate = calculateNextFollowup(new Date())
       break
     case 'scheduled':
       assignmentStatus = 'scheduled'
       leadStatus = 'assigned'
       contacted = true
-      // Schedule next followup in 3 business days
       nextFollowupDate = calculateNextFollowup(new Date())
       break
     case 'closed':
@@ -161,11 +159,10 @@ export async function POST(
     followup_count: (assignment.followup_count || 0) + 1
   }
 
-  // Set next followup date for reached/scheduled
   if (nextFollowupDate) {
     updateData.followup_date = nextFollowupDate.toISOString()
-    updateData.followup_sent_at = null // Reset so it gets sent again
-    updateData.response_deadline = null // Will be set when email is sent
+    updateData.followup_sent_at = null
+    updateData.response_deadline = null
   }
 
   await supabase
