@@ -1,9 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { Resend } from 'resend'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 const supabase = createClient(supabaseUrl, supabaseKey)
+const resend = new Resend(process.env.RESEND_API_KEY)
+
+async function sendLeadsEmail(broker: any, leads: any[], packageName: string) {
+  if (!broker.email) return false
+
+  const leadsHtml = leads.map(lead => `
+    <div style="background:#f8fafc;border-radius:10px;padding:16px;margin-bottom:12px;">
+      <div style="font-weight:600;font-size:16px;color:#1e293b;margin-bottom:8px;">${lead.first_name} ${lead.last_name}</div>
+      <table style="font-size:14px;width:100%;">
+        ${lead.email ? `<tr><td style="color:#64748b;width:80px;">E-Mail:</td><td style="color:#1e293b;">${lead.email}</td></tr>` : ''}
+        ${lead.phone ? `<tr><td style="color:#64748b;">Telefon:</td><td style="color:#1e293b;">${lead.phone}</td></tr>` : ''}
+        ${lead.plz ? `<tr><td style="color:#64748b;">PLZ/Ort:</td><td style="color:#1e293b;">${lead.plz} ${lead.ort || ''}</td></tr>` : ''}
+      </table>
+    </div>
+  `).join('')
+
+  const emailHtml = `
+    <div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;">
+      <div style="background:linear-gradient(135deg,#22c55e 0%,#16a34a 100%);color:white;padding:32px;text-align:center;border-radius:16px 16px 0 0;">
+        <h1 style="margin:0;font-size:24px;">🎉 ${leads.length} neue Leads!</h1>
+      </div>
+      <div style="padding:32px;background:#ffffff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 16px 16px;">
+        <p style="font-size:16px;color:#1e293b;">Hallo ${broker.contact_person || broker.name},</p>
+        <p style="color:#64748b;line-height:1.6;">
+          Hier sind Ihre neuen Leads aus dem Paket <strong>"${packageName}"</strong>:
+        </p>
+        
+        <div style="margin:24px 0;">
+          ${leadsHtml}
+        </div>
+        
+        <p style="color:#64748b;line-height:1.6;">
+          Bitte kontaktieren Sie die Leads so schnell wie möglich für beste Erfolgsaussichten.
+        </p>
+        
+        <hr style="border:none;border-top:1px solid #e2e8f0;margin:32px 0;">
+        
+        <p style="color:#64748b;font-size:14px;margin:0;">
+          Freundliche Grüsse<br>
+          <strong style="color:#1e293b;">LeadsHub</strong>
+        </p>
+      </div>
+    </div>
+  `
+
+  try {
+    await resend.emails.send({
+      from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
+      to: broker.email,
+      subject: `${leads.length} neue Leads - ${packageName}`,
+      html: emailHtml
+    })
+    return true
+  } catch (e) {
+    console.error('Email error:', e)
+    return false
+  }
+}
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
@@ -13,10 +72,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Package ID required' }, { status: 400 })
   }
 
-  // Get package
+  // Get package with broker
   const { data: pkg } = await supabase
     .from('lead_packages')
-    .select('*')
+    .select('*, broker:brokers(*)')
     .eq('id', package_id)
     .single()
 
@@ -28,7 +87,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Package not active' }, { status: 400 })
   }
 
-  // Calculate how many leads to deliver
   const remaining = pkg.total_leads - pkg.delivered_leads
   const toDeliver = count ? Math.min(count, remaining) : Math.min(pkg.leads_per_day, remaining)
 
@@ -55,21 +113,20 @@ export async function POST(request: NextRequest) {
   }
 
   // Assign leads to broker
-  let deliveredCount = 0
+  const deliveredLeads = []
   for (const lead of leads) {
     const { error: assignError } = await supabase
       .from('lead_assignments')
       .insert([{
         lead_id: lead.id,
         broker_id: pkg.broker_id,
-        price_charged: pkg.price / pkg.total_leads, // Price per lead
+        price_charged: pkg.price / pkg.total_leads,
         pricing_model: 'fixed',
         status: 'sent',
-        unlocked: true // Already paid
+        unlocked: true
       }])
 
     if (!assignError) {
-      // Update lead status
       await supabase
         .from('leads')
         .update({ 
@@ -78,12 +135,12 @@ export async function POST(request: NextRequest) {
         })
         .eq('id', lead.id)
       
-      deliveredCount++
+      deliveredLeads.push(lead)
     }
   }
 
   // Update package
-  const newDelivered = pkg.delivered_leads + deliveredCount
+  const newDelivered = pkg.delivered_leads + deliveredLeads.length
   const isCompleted = newDelivered >= pkg.total_leads
 
   const updateData: any = {
@@ -91,11 +148,9 @@ export async function POST(request: NextRequest) {
     status: isCompleted ? 'completed' : 'active'
   }
 
-  // Calculate next delivery date if distributed and not completed
   if (!isCompleted && pkg.distribution_type === 'distributed') {
     let nextDate = new Date()
     nextDate.setDate(nextDate.getDate() + 1)
-    // Skip weekends
     while (nextDate.getDay() === 0 || nextDate.getDay() === 6) {
       nextDate.setDate(nextDate.getDate() + 1)
     }
@@ -107,29 +162,34 @@ export async function POST(request: NextRequest) {
     .update(updateData)
     .eq('id', package_id)
 
+  // Send email with leads
+  let emailSent = false
+  if (deliveredLeads.length > 0 && pkg.broker) {
+    emailSent = await sendLeadsEmail(pkg.broker, deliveredLeads, pkg.name)
+  }
+
   return NextResponse.json({ 
     success: true, 
-    delivered: deliveredCount,
+    delivered: deliveredLeads.length,
     total_delivered: newDelivered,
     remaining: pkg.total_leads - newDelivered,
-    completed: isCompleted
+    completed: isCompleted,
+    email_sent: emailSent
   })
 }
 
-// GET - Check and deliver for cron job (distributed packages)
+// GET - Cron job for distributed packages
 export async function GET(request: NextRequest) {
   const today = new Date().toISOString().split('T')[0]
   const dayOfWeek = new Date().getDay()
 
-  // Skip weekends
   if (dayOfWeek === 0 || dayOfWeek === 6) {
     return NextResponse.json({ message: 'Weekend - no deliveries' })
   }
 
-  // Find packages that need delivery today
   const { data: packages } = await supabase
     .from('lead_packages')
-    .select('*')
+    .select('*, broker:brokers(*)')
     .eq('status', 'active')
     .eq('distribution_type', 'distributed')
     .lte('next_delivery_date', today)
@@ -142,13 +202,11 @@ export async function GET(request: NextRequest) {
   const results = []
 
   for (const pkg of packages) {
-    // Deliver leads for this package
     const remaining = pkg.total_leads - pkg.delivered_leads
     const toDeliver = Math.min(pkg.leads_per_day, remaining)
 
     if (toDeliver <= 0) continue
 
-    // Find available leads
     let query = supabase
       .from('leads')
       .select('*')
@@ -167,7 +225,7 @@ export async function GET(request: NextRequest) {
       continue
     }
 
-    let deliveredCount = 0
+    const deliveredLeads = []
     for (const lead of leads) {
       const { error: assignError } = await supabase
         .from('lead_assignments')
@@ -189,12 +247,11 @@ export async function GET(request: NextRequest) {
           })
           .eq('id', lead.id)
         
-        deliveredCount++
+        deliveredLeads.push(lead)
       }
     }
 
-    // Update package
-    const newDelivered = pkg.delivered_leads + deliveredCount
+    const newDelivered = pkg.delivered_leads + deliveredLeads.length
     const isCompleted = newDelivered >= pkg.total_leads
 
     const updateData: any = {
@@ -216,8 +273,19 @@ export async function GET(request: NextRequest) {
       .update(updateData)
       .eq('id', pkg.id)
 
-    totalDelivered += deliveredCount
-    results.push({ package_id: pkg.id, delivered: deliveredCount, completed: isCompleted })
+    // Send email with leads
+    let emailSent = false
+    if (deliveredLeads.length > 0 && pkg.broker) {
+      emailSent = await sendLeadsEmail(pkg.broker, deliveredLeads, pkg.name)
+    }
+
+    totalDelivered += deliveredLeads.length
+    results.push({ 
+      package_id: pkg.id, 
+      delivered: deliveredLeads.length, 
+      completed: isCompleted,
+      email_sent: emailSent
+    })
   }
 
   return NextResponse.json({ 
