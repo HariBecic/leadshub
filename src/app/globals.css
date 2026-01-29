@@ -64,20 +64,36 @@ body {
   min-height: 100vh;
 }
 
-/* Mobile Menu Button */
-.mobile-menu-btn {
+/* Mobile Header */
+.mobile-header {
   display: none;
   position: fixed;
-  top: 16px;
-  left: 16px;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  background: white;
   z-index: 200;
+  padding: 0 16px;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.mobile-menu-btn {
   background: #3A29A6;
   color: white;
   border: none;
   border-radius: 10px;
-  padding: 12px;
+  padding: 10px;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-logo {
+  height: 32px;
 }
 
 .mobile-overlay {
@@ -327,7 +343,6 @@ body {
 }
 
 @media (max-width: 768px) {
-  /* Hide sidebar on mobile by default */
   .sidebar {
     transform: translateX(-100%);
   }
@@ -336,8 +351,8 @@ body {
     transform: translateX(0);
   }
 
-  .mobile-menu-btn {
-    display: block;
+  .mobile-header {
+    display: flex;
   }
 
   .mobile-overlay.open {
@@ -359,26 +374,30 @@ body {
   }
 
   .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr;
     gap: 12px;
   }
 
   .stat-card {
     padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
   }
 
   .stat-card .icon {
-    width: 40px;
-    height: 40px;
-    margin-bottom: 12px;
+    width: 48px;
+    height: 48px;
+    margin-bottom: 0;
+    flex-shrink: 0;
   }
 
   .stat-card .value {
-    font-size: 22px;
+    font-size: 24px;
   }
 
   .stat-card .label {
-    font-size: 12px;
+    font-size: 13px;
   }
 
   .card {
@@ -386,7 +405,6 @@ body {
     border-radius: 12px;
   }
 
-  /* Responsive Table */
   .table-responsive {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -397,37 +415,6 @@ body {
     font-size: 13px;
   }
 
-  /* Stack table on very small screens */
-  .table-stack thead {
-    display: none;
-  }
-
-  .table-stack tr {
-    display: block;
-    margin-bottom: 16px;
-    background: #f8fafc;
-    border-radius: 10px;
-    padding: 12px;
-  }
-
-  .table-stack td {
-    display: flex;
-    justify-content: space-between;
-    padding: 8px 0;
-    border-bottom: 1px solid #e2e8f0;
-  }
-
-  .table-stack td:last-child {
-    border-bottom: none;
-  }
-
-  .table-stack td::before {
-    content: attr(data-label);
-    font-weight: 600;
-    color: #64748b;
-  }
-
-  /* Modal */
   .modal {
     padding: 24px;
     margin: 16px;
@@ -438,50 +425,21 @@ body {
     font-size: 20px;
   }
 
-  /* Buttons */
   .btn {
     padding: 12px 16px;
-    width: 100%;
-    justify-content: center;
   }
 
   .btn-sm {
-    width: auto;
     padding: 8px 12px;
   }
 
   .page-header .btn {
     width: 100%;
+    justify-content: center;
   }
 
-  /* Form elements */
   .input, .select {
     padding: 14px 16px;
-    font-size: 16px; /* Prevents zoom on iOS */
-  }
-}
-
-@media (max-width: 480px) {
-  .stats-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .stat-card {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
-
-  .stat-card .icon {
-    margin-bottom: 0;
-  }
-
-  .stat-card .content {
-    flex: 1;
-  }
-
-  .modal {
-    padding: 20px;
-    border-radius: 16px;
+    font-size: 16px;
   }
 }
