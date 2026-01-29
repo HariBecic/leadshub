@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase, Lead, Broker } from '@/lib/supabase'
-import { Plus } from 'lucide-react'
+import { Plus, Zap } from 'lucide-react'
 
 interface Contract {
   id: string
@@ -19,6 +19,7 @@ export default function LeadsPage() {
   const [showModal, setShowModal] = useState(false)
   const [showAssignModal, setShowAssignModal] = useState(false)
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
+  const [generating, setGenerating] = useState(false)
 
   useEffect(() => { loadData() }, [])
 
@@ -29,6 +30,59 @@ export default function LeadsPage() {
     setBrokers(brokersData || [])
   }
 
+  async function generateTestLeads() {
+    setGenerating(true)
+    
+    const firstNames = ['Hans', 'Peter', 'Maria', 'Anna', 'Thomas', 'Sandra', 'Michael', 'Lisa', 'Daniel', 'Julia']
+    const lastNames = ['Müller', 'Meier', 'Schmid', 'Keller', 'Weber', 'Huber', 'Schneider', 'Meyer', 'Steiner', 'Fischer']
+    const cities = [
+      { plz: '8001', ort: 'Zürich' },
+      { plz: '3000', ort: 'Bern' },
+      { plz: '4000', ort: 'Basel' },
+      { plz: '6000', ort: 'Luzern' },
+      { plz: '9000', ort: 'St. Gallen' },
+      { plz: '8400', ort: 'Winterthur' },
+      { plz: '5000', ort: 'Aarau' },
+      { plz: '8957', ort: 'Spreitenbach' },
+    ]
+
+    // Get categories
+    const { data: categories } = await supabase.from('lead_categories').select('id')
+    
+    // Get last lead number
+    const { data: lastLead } = await supabase.from('leads').select('lead_number').order('lead_number', { ascending: false }).limit(1).single()
+    let nextNumber = (lastLead?.lead_number || 0) + 1
+
+    // Generate 10 test leads
+    const newLeads = []
+    for (let i = 0; i < 10; i++) {
+      const firstName = firstNames[Math.floor(Math.random() * firstNames.length)]
+      const lastName = lastNames[Math.floor(Math.random() * lastNames.length)]
+      const city = cities[Math.floor(Math.random() * cities.length)]
+      const categoryId = categories && categories.length > 0 
+        ? categories[Math.floor(Math.random() * categories.length)].id 
+        : null
+
+      newLeads.push({
+        lead_number: nextNumber++,
+        first_name: firstName,
+        last_name: lastName,
+        email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}@test.ch`,
+        phone: `07${Math.floor(Math.random() * 10)}${Math.floor(Math.random() * 10000000).toString().padStart(7, '0')}`,
+        plz: city.plz,
+        ort: city.ort,
+        category_id: categoryId,
+        status: 'new',
+        ownership: 'managed',
+        assignment_count: 0
+      })
+    }
+
+    await supabase.from('leads').insert(newLeads)
+    setGenerating(false)
+    loadData()
+  }
+
   const filtered = leads.filter(l => 
     (l.first_name + ' ' + l.last_name + ' ' + l.email).toLowerCase().includes(search.toLowerCase())
   )
@@ -37,9 +91,14 @@ export default function LeadsPage() {
     <div>
       <div className="page-header">
         <h1 className="page-title">Leads</h1>
-        <button onClick={() => setShowModal(true)} className="btn btn-primary">
-          <Plus size={20} />Neuer Lead
-        </button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button onClick={generateTestLeads} disabled={generating} className="btn btn-secondary">
+            <Zap size={20} />{generating ? 'Generiere...' : '10 Test-Leads'}
+          </button>
+          <button onClick={() => setShowModal(true)} className="btn btn-primary">
+            <Plus size={20} />Neuer Lead
+          </button>
+        </div>
       </div>
 
       <div className="card" style={{ marginBottom: '24px', padding: '16px 24px' }}>
@@ -81,8 +140,8 @@ export default function LeadsPage() {
                   {lead.category && <span className="badge badge-info">{(lead.category as any)?.name}</span>}
                 </td>
                 <td>
-                  <span className={`badge ${lead.status === 'new' ? 'badge-success' : lead.status === 'assigned' ? 'badge-warning' : 'badge-neutral'}`}>
-                    {lead.status === 'new' ? 'Neu' : lead.status === 'assigned' ? 'Zugewiesen' : lead.status}
+                  <span className={`badge ${lead.status === 'new' ? 'badge-success' : lead.status === 'assigned' ? 'badge-warning' : lead.status === 'available' ? 'badge-info' : 'badge-neutral'}`}>
+                    {lead.status === 'new' ? 'Neu' : lead.status === 'assigned' ? 'Zugewiesen' : lead.status === 'available' ? 'Verfügbar' : lead.status === 'closed' ? 'Geschlossen' : lead.status}
                   </span>
                 </td>
                 <td>
@@ -233,7 +292,7 @@ function AssignModal(props: { lead: Lead; brokers: Broker[]; onClose: () => void
       return (
         <div>
           <div style={{ marginBottom: '12px', padding: '12px', background: '#fef3c7', color: '#92400e', borderRadius: '8px', fontSize: '14px' }}>
-            Kein aktiver Vertrag gefunden
+            Kein aktiver Vertrag gefunden - Einzelkauf
           </div>
           <label className="input-label">Preis (CHF)</label>
           <input type="number" value={price} onChange={(e) => setPrice(+e.target.value)} className="input" />
@@ -297,7 +356,7 @@ function AssignModal(props: { lead: Lead; brokers: Broker[]; onClose: () => void
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
             <button type="button" onClick={props.onClose} className="btn btn-secondary">Abbrechen</button>
             <button type="submit" disabled={loading || result?.success} className="btn btn-primary">
-              {loading ? 'Wird zugewiesen...' : 'Zuweisen & E-Mail senden'}
+              {loading ? 'Wird zugewiesen...' : 'Zuweisen'}
             </button>
           </div>
         </form>
