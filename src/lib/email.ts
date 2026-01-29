@@ -32,7 +32,7 @@ export async function sendLeadEmail(
   </div>`
 
   const { data, error } = await resend.emails.send({
-    from: 'LeadsHub <leads@leadshub.ch>',
+    from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
     to: broker.email,
     subject: 'Neuer Lead: ' + lead.first_name + ' ' + lead.last_name,
     html
