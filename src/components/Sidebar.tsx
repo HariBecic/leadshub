@@ -1,51 +1,40 @@
 'use client'
-
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { 
-  LayoutDashboard, 
-  Users, 
-  FileText, 
-  Receipt, 
-  Settings,
-  Zap
-} from 'lucide-react'
-
-const navItems = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/leads', label: 'Leads', icon: Zap },
-  { href: '/broker', label: 'Broker', icon: Users },
-  { href: '/rechnungen', label: 'Rechnungen', icon: Receipt },
-  { href: '/einstellungen', label: 'Einstellungen', icon: Settings },
-]
+import { LayoutDashboard, Zap, Users, Receipt, Settings } from 'lucide-react'
 
 export default function Sidebar() {
   const pathname = usePathname()
+  
+  const links = [
+    { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/leads', label: 'Leads', icon: Zap },
+    { href: '/broker', label: 'Broker', icon: Users },
+    { href: '/rechnungen', label: 'Rechnungen', icon: Receipt },
+    { href: '/einstellungen', label: 'Einstellungen', icon: Settings },
+  ]
 
   return (
-    <aside className="w-64 bg-white border-r border-gray-200 min-h-screen p-4">
-      <div className="mb-8">
-        <h1 className="text-xl font-bold text-blue-600">LEADSHUB</h1>
+    <div className="sidebar">
+      <div className="sidebar-logo">
+        <img src="/logo.png" alt="LeadsHub" />
       </div>
-      
-      <nav className="space-y-1">
-        {navItems.map((item) => {
-          const Icon = item.icon
-          const isActive = pathname === item.href || 
-            (item.href !== '/' && pathname.startsWith(item.href))
-          
+      <nav>
+        {links.map((link) => {
+          const Icon = link.icon
+          const isActive = pathname === link.href || (link.href !== '/' && pathname.startsWith(link.href))
           return (
             <Link
-              key={item.href}
-              href={item.href}
-              className={`nav-item ${isActive ? 'active' : ''}`}
+              key={link.href}
+              href={link.href}
+              className={`sidebar-link ${isActive ? 'active' : ''}`}
             >
               <Icon size={20} />
-              {item.label}
+              {link.label}
             </Link>
           )
         })}
       </nav>
-    </aside>
+    </div>
   )
 }
