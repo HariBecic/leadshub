@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Zap, Users, Receipt, Settings } from 'lucide-react'
+import { LayoutDashboard, Zap, Users, Receipt, Settings, Package } from 'lucide-react'
 
 export default function Sidebar() {
   const pathname = usePathname()
@@ -10,6 +10,7 @@ export default function Sidebar() {
     { href: '/', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/leads', label: 'Leads', icon: Zap },
     { href: '/broker', label: 'Broker', icon: Users },
+    { href: '/pakete', label: 'Pakete', icon: Package },
     { href: '/rechnungen', label: 'Rechnungen', icon: Receipt },
     { href: '/einstellungen', label: 'Einstellungen', icon: Settings },
   ]
