@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { supabase, Lead, LeadCategory, Broker } from '@/lib/supabase'
 import { Plus, Search } from 'lucide-react'
 
@@ -30,7 +31,7 @@ export default function LeadsPage() {
 
   const filteredLeads = leads.filter(lead => {
     const s = search.toLowerCase()
-    return (lead.first_name || '').toLowerCase().includes(s) || (lead.last_name || '').toLowerCase().includes(s)
+    return (lead.first_name || '').toLowerCase().includes(s) || (lead.last_name || '').toLowerCase().includes(s) || (lead.email || '').toLowerCase().includes(s)
   })
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="spinner"></div></div>
@@ -55,18 +56,31 @@ export default function LeadsPage() {
         <div className="card p-0 overflow-hidden">
           <table className="table">
             <thead>
-              <tr><th>ID</th><th>Name</th><th>Kontakt</th><th>Status</th><th></th></tr>
+              <tr><th>ID</th><th>Name</th><th>Kontakt</th><th>Kategorie</th><th>Status</th><th></th></tr>
             </thead>
             <tbody>
               {filteredLeads.map((lead) => (
-                <tr key={lead.id}>
-                  <td>#{lead.lead_number}</td>
-                  <td>{lead.first_name} {lead.last_name}</td>
-                  <td><div>{lead.email}</div><div>{lead.phone}</div></td>
-                  <td><span className="badge badge-success">{lead.status}</span></td>
+                <tr key={lead.id} className="hover:bg-gray-50 cursor-pointer">
+                  <td>
+                    <Link href={`/leads/${lead.id}`} className="text-blue-600 hover:underline">
+                      #{lead.lead_number}
+                    </Link>
+                  </td>
+                  <td>
+                    <Link href={`/leads/${lead.id}`} className="font-medium hover:text-blue-600">
+                      {lead.first_name} {lead.last_name}
+                    </Link>
+                  </td>
+                  <td><div>{lead.email}</div><div className="text-gray-500">{lead.phone}</div></td>
+                  <td><span className="badge badge-neutral">{(lead.category as any)?.name || '-'}</span></td>
+                  <td>
+                    <span className={`badge ${lead.status === 'new' ? 'badge-success' : lead.status === 'assigned' ? 'badge-warning' : 'badge-neutral'}`}>
+                      {lead.status === 'new' ? 'Neu' : lead.status === 'assigned' ? 'Zugewiesen' : lead.status}
+                    </span>
+                  </td>
                   <td>
                     {(lead.status === 'new' || lead.status === 'available') && (
-                      <button onClick={() => { setSelectedLead(lead); setShowAssignModal(true) }} className="btn btn-secondary">
+                      <button onClick={(e) => { e.stopPropagation(); setSelectedLead(lead); setShowAssignModal(true) }} className="btn btn-secondary">
                         Zuweisen
                       </button>
                     )}
