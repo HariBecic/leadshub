@@ -34,7 +34,7 @@ body {
 }
 
 .sidebar-logo img {
-  height: 36px;
+  height: 28px;
 }
 
 .sidebar-link {
@@ -96,7 +96,7 @@ body {
 }
 
 .mobile-logo {
-  height: 40px;
+  height: 28px;
 }
 
 .mobile-overlay {
@@ -126,7 +126,7 @@ body {
   color: white;
 }
 
-/* Glass Cards - WITH SPACING */
+/* Glass Cards */
 .card {
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(20px);
@@ -390,57 +390,6 @@ h2, h3 {
 /* Default text color */
 p, span, div, td, label {
   color: white;
-}
-
-/* OVERRIDE INLINE STYLES FOR DARK TEXT ON LIGHT BACKGROUNDS */
-/* Yellow/Warning backgrounds need dark text */
-div[style*="background: #fef3c7"],
-div[style*="background:#fef3c7"],
-div[style*="background: rgb(254, 243, 199)"] {
-  color: #92400e !important;
-}
-
-div[style*="background: #fef3c7"] *,
-div[style*="background:#fef3c7"] *,
-div[style*="background: rgb(254, 243, 199)"] * {
-  color: #92400e !important;
-}
-
-/* Green backgrounds */
-div[style*="background: #dcfce7"] *,
-div[style*="background:#dcfce7"] * {
-  color: #166534 !important;
-}
-
-/* Blue backgrounds */
-div[style*="background: #dbeafe"] *,
-div[style*="background:#dbeafe"] * {
-  color: #1e40af !important;
-}
-
-/* Red backgrounds */
-div[style*="background: #fee2e2"] *,
-div[style*="background:#fee2e2"] * {
-  color: #991b1b !important;
-}
-
-/* Purple backgrounds */
-div[style*="background: #f3e8ff"] *,
-div[style*="background:#f3e8ff"] * {
-  color: #7c3aed !important;
-}
-
-/* White/Light card backgrounds in dashboard */
-div[style*="background: white"],
-div[style*="background:#fff"],
-div[style*="background: #fff"] {
-  color: #1e293b !important;
-}
-
-div[style*="background: white"] *,
-div[style*="background:#fff"] *,
-div[style*="background: #fff"] * {
-  color: #1e293b !important;
 }
 
 /* ===== MOBILE STYLES ===== */
