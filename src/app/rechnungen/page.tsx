@@ -1,153 +1,212 @@
 'use client'
-
 import { useEffect, useState } from 'react'
-import { supabase, Invoice, Broker } from '@/lib/supabase'
-import { Plus, Search, FileText, Mail, Download } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { Plus, FileText, Download, Eye } from 'lucide-react'
+
+interface Invoice {
+  id: string
+  invoice_number: string
+  broker_id: string
+  broker?: { name: string }
+  type: string
+  status: string
+  amount: number
+  period_start?: string
+  period_end?: string
+  due_date?: string
+  created_at: string
+}
 
 export default function RechnungenPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([])
-  const [brokers, setBrokers] = useState<Broker[]>([])
   const [loading, setLoading] = useState(true)
+  const [creating, setCreating] = useState(false)
   const [showModal, setShowModal] = useState(false)
 
-  useEffect(() => { loadData() }, [])
+  useEffect(() => { loadInvoices() }, [])
 
-  async function loadData() {
-    try {
-      const [invRes, brkRes] = await Promise.all([
-        supabase.from('invoices').select('*, broker:brokers(*)').order('created_at', { ascending: false }),
-        supabase.from('brokers').select('*').eq('status', 'active'),
-      ])
-      setInvoices(invRes.data || [])
-      setBrokers(brkRes.data || [])
-    } catch (error) { console.error('Error:', error) }
-    finally { setLoading(false) }
+  async function loadInvoices() {
+    const { data } = await supabase
+      .from('invoices')
+      .select('*, broker:brokers(name)')
+      .order('created_at', { ascending: false })
+    setInvoices(data || [])
+    setLoading(false)
   }
 
-  async function updateStatus(id: string, status: string) {
-    try {
-      const updates: any = { status, updated_at: new Date().toISOString() }
-      if (status === 'paid') updates.paid_at = new Date().toISOString()
-      if (status === 'sent') updates.sent_at = new Date().toISOString()
-      
-      const { error } = await supabase.from('invoices').update(updates).eq('id', id)
-      if (error) throw error
-      loadData()
-    } catch (error) { console.error('Error:', error) }
+  async function markAsPaid(id: string) {
+    await supabase
+      .from('invoices')
+      .update({ status: 'paid', paid_at: new Date().toISOString() })
+      .eq('id', id)
+    loadInvoices()
   }
 
-  const getStatusBadge = (status: string) => {
+  const statusBadge = (status: string) => {
     switch (status) {
-      case 'draft': return <span className="badge badge-neutral">Entwurf</span>
-      case 'sent': return <span className="badge badge-warning">Gesendet</span>
+      case 'pending': return <span className="badge badge-warning">Offen</span>
       case 'paid': return <span className="badge badge-success">Bezahlt</span>
-      case 'overdue': return <span className="badge badge-danger">Überfällig</span>
+      case 'cancelled': return <span className="badge badge-danger">Storniert</span>
       default: return <span className="badge badge-neutral">{status}</span>
     }
   }
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="spinner"></div></div>
+  const typeBadge = (type: string) => {
+    switch (type) {
+      case 'single': return <span className="badge badge-info">Einzelkauf</span>
+      case 'subscription': return <span className="badge badge-accent">Abo</span>
+      case 'commission': return <span className="badge" style={{ background: '#f3e8ff', color: '#7c3aed' }}>Provision</span>
+      default: return <span className="badge badge-neutral">{type}</span>
+    }
+  }
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Rechnungen</h1>
-        <button onClick={() => setShowModal(true)} className="btn btn-primary"><Plus size={20} />Neue Rechnung</button>
+      <div className="page-header">
+        <h1 className="page-title">Rechnungen</h1>
+        <button onClick={() => setShowModal(true)} className="btn btn-primary">
+          <Plus size={20} />Neue Rechnung
+        </button>
       </div>
 
-      {invoices.length === 0 ? (
-        <div className="card empty-state">
-          <FileText className="empty-state-icon mx-auto" size={48} />
-          <p>Keine Rechnungen vorhanden</p>
-          <button onClick={() => setShowModal(true)} className="btn btn-primary mt-4"><Plus size={20} />Erste Rechnung erstellen</button>
-        </div>
-      ) : (
-        <div className="card p-0 overflow-hidden">
+      <div className="card">
+        {loading ? (
+          <div style={{ padding: '40px', textAlign: 'center' }}>
+            <div className="spinner" style={{ margin: '0 auto' }}></div>
+          </div>
+        ) : invoices.length === 0 ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+            Noch keine Rechnungen vorhanden
+          </div>
+        ) : (
           <table className="table">
-            <thead><tr><th>Nr.</th><th>Broker</th><th>Betrag</th><th>Status</th><th>Erstellt</th><th></th></tr></thead>
+            <thead>
+              <tr>
+                <th>Nr.</th>
+                <th>Broker</th>
+                <th>Typ</th>
+                <th>Betrag</th>
+                <th>Datum</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
             <tbody>
-              {invoices.map((inv) => (
-                <tr key={inv.id}>
-                  <td className="font-mono">{inv.invoice_number}</td>
-                  <td>{(inv.broker as any)?.name || '-'}</td>
-                  <td className="font-medium">CHF {inv.total_amount.toFixed(2)}</td>
-                  <td>{getStatusBadge(inv.status)}</td>
-                  <td className="text-sm text-gray-500">{new Date(inv.created_at).toLocaleDateString('de-CH')}</td>
+              {invoices.map((invoice) => (
+                <tr key={invoice.id}>
+                  <td style={{ fontWeight: 600 }}>{invoice.invoice_number}</td>
+                  <td>{invoice.broker?.name}</td>
+                  <td>{typeBadge(invoice.type)}</td>
+                  <td style={{ fontWeight: 600 }}>CHF {Number(invoice.amount).toFixed(2)}</td>
+                  <td style={{ color: '#64748b' }}>{new Date(invoice.created_at).toLocaleDateString('de-CH')}</td>
+                  <td>{statusBadge(invoice.status)}</td>
                   <td>
-                    <div className="flex gap-2">
-                      {inv.status === 'draft' && <button onClick={() => updateStatus(inv.id, 'sent')} className="btn btn-ghost text-xs"><Mail size={14} />Senden</button>}
-                      {inv.status === 'sent' && <button onClick={() => updateStatus(inv.id, 'paid')} className="btn btn-ghost text-xs text-green-600">Als bezahlt</button>}
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <a 
+                        href={`/api/invoice/${invoice.id}`} 
+                        target="_blank"
+                        className="btn btn-secondary btn-sm"
+                        title="Anzeigen"
+                      >
+                        <Eye size={16} />
+                      </a>
+                      {invoice.status === 'pending' && (
+                        <button 
+                          onClick={() => markAsPaid(invoice.id)}
+                          className="btn btn-sm"
+                          style={{ background: '#dcfce7', color: '#166534' }}
+                        >
+                          Als bezahlt
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-      )}
+        )}
+      </div>
 
-      {showModal && <CreateInvoiceModal brokers={brokers} onClose={() => setShowModal(false)} onSave={() => { setShowModal(false); loadData() }} />}
+      {showModal && <NewInvoiceModal onClose={() => setShowModal(false)} onSave={() => { setShowModal(false); loadInvoices() }} />}
     </div>
   )
 }
 
-function CreateInvoiceModal({ brokers, onClose, onSave }: { brokers: Broker[], onClose: () => void, onSave: () => void }) {
+function NewInvoiceModal(props: { onClose: () => void; onSave: () => void }) {
   const [loading, setLoading] = useState(false)
-  const [formData, setFormData] = useState({
-    broker_id: brokers[0]?.id || '',
-    subtotal: 0,
-    description: '',
-  })
+  const [brokers, setBrokers] = useState<any[]>([])
+  const [brokerId, setBrokerId] = useState('')
+  const [type, setType] = useState('subscription')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    loadBrokers()
+  }, [])
+
+  async function loadBrokers() {
+    const { data } = await supabase.from('brokers').select('*').eq('status', 'active')
+    setBrokers(data || [])
+    if (data && data.length > 0) setBrokerId(data[0].id)
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
+    setError('')
+
     try {
-      const vatRate = 8.1
-      const vatAmount = formData.subtotal * (vatRate / 100)
-      const totalAmount = formData.subtotal + vatAmount
+      const res = await fetch('/api/invoice/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ broker_id: brokerId, type })
+      })
+      const data = await res.json()
       
-      // Generate invoice number
-      const year = new Date().getFullYear()
-      const { count } = await supabase.from('invoices').select('*', { count: 'exact', head: true }).gte('created_at', `${year}-01-01`)
-      const invoiceNumber = `LH-${year}-${String((count || 0) + 1).padStart(3, '0')}`
-      
-      const { error } = await supabase.from('invoices').insert([{
-        broker_id: formData.broker_id,
-        invoice_number: invoiceNumber,
-        subtotal: formData.subtotal,
-        vat_rate: vatRate,
-        vat_amount: vatAmount,
-        total_amount: totalAmount,
-        status: 'draft',
-        due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      }])
-      if (error) throw error
-      onSave()
-    } catch (error) { console.error('Error:', error); alert('Fehler beim Erstellen') }
-    finally { setLoading(false) }
+      if (data.success) {
+        props.onSave()
+      } else {
+        setError(data.error || 'Fehler beim Erstellen')
+      }
+    } catch {
+      setError('Netzwerkfehler')
+    }
+    setLoading(false)
   }
 
-  const vatAmount = formData.subtotal * 0.081
-  const total = formData.subtotal + vatAmount
-
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={props.onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-xl font-bold mb-4">Neue Rechnung</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div><label className="input-label">Broker *</label><select required value={formData.broker_id} onChange={(e) => setFormData({ ...formData, broker_id: e.target.value })} className="select">{brokers.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
-          <div><label className="input-label">Betrag (CHF, ohne MwSt) *</label><input type="number" required value={formData.subtotal} onChange={(e) => setFormData({ ...formData, subtotal: parseFloat(e.target.value) || 0 })} className="input" min="0" step="0.01" /></div>
-          
-          <div className="bg-gray-50 p-4 rounded-lg space-y-2 text-sm">
-            <div className="flex justify-between"><span>Subtotal</span><span>CHF {formData.subtotal.toFixed(2)}</span></div>
-            <div className="flex justify-between text-gray-500"><span>MwSt 8.1%</span><span>CHF {vatAmount.toFixed(2)}</span></div>
-            <div className="flex justify-between font-bold border-t pt-2"><span>Total</span><span>CHF {total.toFixed(2)}</span></div>
+        <h2>Neue Rechnung erstellen</h2>
+        <p style={{ color: '#64748b', marginBottom: '24px' }}>Wähle Broker und Rechnungstyp</p>
+
+        {error && (
+          <div style={{ marginBottom: '16px', padding: '12px', background: '#fee2e2', color: '#991b1b', borderRadius: '8px' }}>
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: '16px' }}>
+            <label className="input-label">Broker</label>
+            <select value={brokerId} onChange={(e) => setBrokerId(e.target.value)} className="select">
+              {brokers.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
           </div>
 
-          <div className="flex justify-end gap-3 pt-4">
-            <button type="button" onClick={onClose} className="btn btn-secondary">Abbrechen</button>
-            <button type="submit" disabled={loading} className="btn btn-primary">{loading ? 'Erstellen...' : 'Rechnung erstellen'}</button>
+          <div style={{ marginBottom: '24px' }}>
+            <label className="input-label">Rechnungstyp</label>
+            <select value={type} onChange={(e) => setType(e.target.value)} className="select">
+              <option value="subscription">Abo (monatlich)</option>
+              <option value="commission">Provisionen (monatlich)</option>
+            </select>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+            <button type="button" onClick={props.onClose} className="btn btn-secondary">Abbrechen</button>
+            <button type="submit" disabled={loading} className="btn btn-primary">
+              {loading ? 'Wird erstellt...' : 'Rechnung erstellen'}
+            </button>
           </div>
         </form>
       </div>
