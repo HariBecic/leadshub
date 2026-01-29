@@ -4,6 +4,14 @@ import Link from 'next/link'
 import { supabase, Lead, Broker } from '@/lib/supabase'
 import { Search, Plus } from 'lucide-react'
 
+interface Contract {
+  id: string
+  pricing_model: string
+  price_per_lead: number | null
+  revenue_share_percent: number | null
+  monthly_fee: number | null
+}
+
 export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([])
   const [brokers, setBrokers] = useState<Broker[]>([])
@@ -158,7 +166,42 @@ function AssignModal(props: { lead: Lead; brokers: Broker[]; onClose: () => void
   const [loading, setLoading] = useState(false)
   const [brokerId, setBrokerId] = useState(props.brokers[0]?.id || '')
   const [price, setPrice] = useState(35)
+  const [contract, setContract] = useState<Contract | null>(null)
+  const [loadingContract, setLoadingContract] = useState(false)
   const [result, setResult] = useState<{ success?: boolean; email_sent?: boolean; error?: string } | null>(null)
+
+  useEffect(() => {
+    loadContract(brokerId)
+  }, [brokerId])
+
+  async function loadContract(broker_id: string) {
+    if (!broker_id) return
+    setLoadingContract(true)
+    
+    const categoryId = (props.lead as any).category_id
+    
+    let { data: contractData } = await supabase
+      .from('contracts')
+      .select('*')
+      .eq('broker_id', broker_id)
+      .eq('category_id', categoryId)
+      .eq('status', 'active')
+      .single()
+
+    if (!contractData) {
+      const { data: generalContract } = await supabase
+        .from('contracts')
+        .select('*')
+        .eq('broker_id', broker_id)
+        .is('category_id', null)
+        .eq('status', 'active')
+        .single()
+      contractData = generalContract
+    }
+
+    setContract(contractData)
+    setLoadingContract(false)
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -169,7 +212,11 @@ function AssignModal(props: { lead: Lead; brokers: Broker[]; onClose: () => void
       const res = await fetch('/api/assign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lead_id: props.lead.id, broker_id: brokerId, price })
+        body: JSON.stringify({ 
+          lead_id: props.lead.id, 
+          broker_id: brokerId,
+          price: contract ? undefined : price
+        })
       })
       const data = await res.json()
       
@@ -183,6 +230,46 @@ function AssignModal(props: { lead: Lead; brokers: Broker[]; onClose: () => void
       setResult({ error: 'Netzwerkfehler' })
     }
     setLoading(false)
+  }
+
+  const renderContractInfo = () => {
+    if (loadingContract) {
+      return <div className="text-gray-500 text-sm">Lade Vertrag...</div>
+    }
+    if (!contract) {
+      return (
+        <div>
+          <div className="mb-2 p-2 bg-yellow-50 text-yellow-700 rounded text-sm">
+            Kein aktiver Vertrag gefunden
+          </div>
+          <label className="input-label">Preis (CHF)</label>
+          <input type="number" value={price} onChange={(e) => setPrice(+e.target.value)} className="input" />
+        </div>
+      )
+    }
+    
+    if (contract.pricing_model === 'revenue_share') {
+      return (
+        <div className="p-3 bg-purple-50 text-purple-700 rounded-lg">
+          <div className="font-medium">Beteiligungsvertrag</div>
+          <div className="text-lg">{contract.revenue_share_percent}% bei Abschluss</div>
+        </div>
+      )
+    } else if (contract.pricing_model === 'subscription') {
+      return (
+        <div className="p-3 bg-blue-50 text-blue-700 rounded-lg">
+          <div className="font-medium">Abo-Vertrag</div>
+          <div className="text-lg">CHF {contract.monthly_fee}/Monat</div>
+        </div>
+      )
+    } else {
+      return (
+        <div className="p-3 bg-green-50 text-green-700 rounded-lg">
+          <div className="font-medium">Fixpreis-Vertrag</div>
+          <div className="text-lg">CHF {contract.price_per_lead} pro Lead</div>
+        </div>
+      )
+    }
   }
 
   return (
@@ -208,10 +295,12 @@ function AssignModal(props: { lead: Lead; brokers: Broker[]; onClose: () => void
               {props.brokers.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </div>
+          
           <div>
-            <label className="input-label">Preis (CHF)</label>
-            <input type="number" value={price} onChange={(e) => setPrice(+e.target.value)} className="input" />
+            <label className="input-label">Preismodell</label>
+            {renderContractInfo()}
           </div>
+
           <div className="flex justify-end gap-3">
             <button type="button" onClick={props.onClose} className="btn btn-secondary">Abbrechen</button>
             <button type="submit" disabled={loading || result?.success} className="btn btn-primary">
