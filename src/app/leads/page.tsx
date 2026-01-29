@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Plus, Search, RefreshCw } from 'lucide-react'
+import Link from 'next/link'
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState<any[]>([])
@@ -126,9 +127,13 @@ export default function LeadsPage() {
             </thead>
             <tbody>
               {filtered.map((lead) => (
-                <tr key={lead.id}>
+                <tr key={lead.id} style={{ cursor: 'pointer' }} onClick={() => window.location.href = `/leads/${lead.id}`}>
                   <td>#{lead.lead_number}</td>
-                  <td style={{ fontWeight: 500 }}>{lead.first_name} {lead.last_name}</td>
+                  <td>
+                    <Link href={`/leads/${lead.id}`} style={{ fontWeight: 500, color: 'white', textDecoration: 'none' }}>
+                      {lead.first_name} {lead.last_name}
+                    </Link>
+                  </td>
                   <td>
                     <div>{lead.email}</div>
                     <div style={{ opacity: 0.7, fontSize: '13px' }}>{lead.phone}</div>
