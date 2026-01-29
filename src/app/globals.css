@@ -139,7 +139,7 @@ body {
   font-size: 32px;
   font-weight: 700;
   color: white;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
 }
 
 /* Glass Cards */
@@ -151,6 +151,7 @@ body {
   padding: 24px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  margin-bottom: 24px;
 }
 
 /* Stats Grid */
@@ -206,7 +207,7 @@ body {
   color: rgba(255, 255, 255, 0.7);
 }
 
-/* Tables - Glass */
+/* Tables - Glass - BETTER READABILITY */
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -216,30 +217,34 @@ body {
   text-align: left;
   padding: 14px 16px;
   font-size: 12px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.6);
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.1);
 }
 
 .table td {
   padding: 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 14px;
   color: white;
+  font-weight: 500;
 }
 
 .table tr:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .table a {
-  color: white;
+  color: #a5b4fc;
   text-decoration: none;
+  font-weight: 600;
 }
 
 .table a:hover {
+  color: white;
   text-decoration: underline;
 }
 
@@ -271,14 +276,14 @@ body {
 }
 
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.15);
   color: white;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   backdrop-filter: blur(10px);
 }
 
 .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.25);
 }
 
 .btn-accent {
@@ -298,44 +303,46 @@ body {
   border-radius: 10px;
 }
 
-/* Badges - Glass */
+/* Badges - Glass - BETTER CONTRAST */
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 5px 12px;
+  padding: 6px 14px;
   border-radius: 20px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   backdrop-filter: blur(10px);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
-.badge-success { background: rgba(34, 197, 94, 0.25); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
-.badge-warning { background: rgba(251, 191, 36, 0.25); color: #fcd34d; border: 1px solid rgba(251, 191, 36, 0.3); }
-.badge-danger { background: rgba(239, 68, 68, 0.25); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
-.badge-info { background: rgba(59, 130, 246, 0.25); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.3); }
-.badge-accent { background: rgba(242, 100, 68, 0.25); color: #fdba74; border: 1px solid rgba(242, 100, 68, 0.3); }
-.badge-neutral { background: rgba(255, 255, 255, 0.15); color: rgba(255, 255, 255, 0.8); border: 1px solid rgba(255, 255, 255, 0.2); }
+.badge-success { background: rgba(34, 197, 94, 0.4); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.5); }
+.badge-warning { background: rgba(251, 191, 36, 0.4); color: #fde047; border: 1px solid rgba(251, 191, 36, 0.5); }
+.badge-danger { background: rgba(239, 68, 68, 0.4); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.5); }
+.badge-info { background: rgba(59, 130, 246, 0.4); color: #bfdbfe; border: 1px solid rgba(59, 130, 246, 0.5); }
+.badge-accent { background: rgba(242, 100, 68, 0.4); color: #fed7aa; border: 1px solid rgba(242, 100, 68, 0.5); }
+.badge-neutral { background: rgba(255, 255, 255, 0.2); color: white; border: 1px solid rgba(255, 255, 255, 0.3); }
 
 /* Inputs - Glass */
 .input, .select, .textarea {
   width: 100%;
   padding: 14px 18px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 14px;
   font-size: 15px;
   transition: all 0.2s;
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(10px);
   color: white;
+  font-weight: 500;
 }
 
 .input::placeholder, .textarea::placeholder {
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .input:focus, .select:focus, .textarea:focus {
   outline: none;
-  border-color: rgba(255, 255, 255, 0.4);
+  border-color: rgba(255, 255, 255, 0.5);
   background: rgba(255, 255, 255, 0.15);
 }
 
@@ -347,14 +354,14 @@ body {
 .input-label {
   display: block;
   font-size: 14px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.9);
+  font-weight: 600;
+  color: white;
   margin-bottom: 8px;
 }
 
 .input-search {
   background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   padding: 14px 20px;
 }
 
@@ -375,7 +382,7 @@ body {
 }
 
 .modal {
-  background: rgba(30, 27, 75, 0.9);
+  background: rgba(30, 27, 75, 0.95);
   backdrop-filter: blur(30px);
   -webkit-backdrop-filter: blur(30px);
   border-radius: 24px;
@@ -396,7 +403,45 @@ body {
 }
 
 .modal p {
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Section Headers - For Settings Page */
+h2 {
+  color: white;
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 20px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+h3 {
+  color: white;
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+/* Settings Page Specific */
+.card + .card {
+  margin-top: 24px;
+}
+
+.card h2:first-child {
+  margin-top: 0;
+}
+
+/* Better spacing for stacked elements */
+.card > div + div {
+  margin-top: 16px;
+}
+
+/* Copy Button Style */
+button[title="Kopieren"], 
+button:has(svg) {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
 }
 
 /* Spinner */
@@ -411,6 +456,20 @@ body {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* Text Colors for Better Readability */
+p, span, div {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Links */
+a {
+  color: #a5b4fc;
+}
+
+a:hover {
+  color: white;
 }
 
 /* ===== MOBILE STYLES ===== */
