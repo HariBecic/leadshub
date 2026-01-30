@@ -69,7 +69,29 @@ export default function BrokerDetailPage() {
   }
 
   async function toggleBrokerStatus() {
-    await supabase.from('brokers').update({ is_active: !broker.is_active }).eq('id', params.id)
+    const newStatus = !broker.is_active
+    const { error } = await supabase.from('brokers').update({ is_active: newStatus }).eq('id', params.id)
+    if (error) {
+      console.error('Toggle error:', error)
+      alert('Fehler: ' + error.message)
+    } else {
+      setBroker({ ...broker, is_active: newStatus })
+    }
+  }
+
+  async function deleteContract(contractId: string) {
+    if (!confirm('Vertrag wirklich löschen?')) return
+    await supabase.from('contracts').delete().eq('id', contractId)
+    loadData()
+  }
+
+  async function activateContract(contractId: string) {
+    await supabase.from('contracts').update({ status: 'active' }).eq('id', contractId)
+    loadData()
+  }
+
+  async function deactivateContract(contractId: string) {
+    await supabase.from('contracts').update({ status: 'inactive' }).eq('id', contractId)
     loadData()
   }
 
@@ -174,6 +196,7 @@ export default function BrokerDetailPage() {
                   <th>Typ</th>
                   <th>Konditionen</th>
                   <th>Status</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -187,6 +210,22 @@ export default function BrokerDetailPage() {
                       {contract.pricing_model === 'revenue_share' && `${contract.revenue_share_percent}%`}
                     </td>
                     <td>{statusBadge(contract.status)}</td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                        {contract.status === 'active' ? (
+                          <button onClick={() => deactivateContract(contract.id)} className="btn btn-sm btn-secondary" style={{ fontSize: '12px', padding: '6px 10px' }}>
+                            Deaktivieren
+                          </button>
+                        ) : contract.status !== 'pending' && (
+                          <button onClick={() => activateContract(contract.id)} className="btn btn-sm btn-accent" style={{ fontSize: '12px', padding: '6px 10px' }}>
+                            Aktivieren
+                          </button>
+                        )}
+                        <button onClick={() => deleteContract(contract.id)} className="btn btn-sm btn-secondary" style={{ fontSize: '12px', padding: '6px 10px', color: '#fca5a5' }}>
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
