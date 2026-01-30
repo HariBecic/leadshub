@@ -36,7 +36,7 @@ export default function PaketePage() {
     const { data: categoriesData } = await supabase
       .from('lead_categories')
       .select('*')
-      .eq('is_active', true)
+      .order('name')
     
     setPackages(packagesData || [])
     setBrokers(brokersData || [])
