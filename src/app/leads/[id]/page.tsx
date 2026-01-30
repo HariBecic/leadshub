@@ -412,6 +412,8 @@ export default function LeadDetailPage() {
             )}
           </div>
         </div>
+      )}
+
       {/* Assign Modal */}
       {showAssignModal && (
         <div className="modal-overlay" onClick={() => setShowAssignModal(false)}>
