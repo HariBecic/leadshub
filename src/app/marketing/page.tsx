@@ -8,7 +8,7 @@ export default function MarketingPage() {
       id: 'meta',
       name: 'Meta Ads',
       description: 'Facebook & Instagram Kampagnen',
-      logo: 'https://cdn.brandfetch.io/idYEwRgACE/w/400/h/400/theme/dark/icon.png?c=1bfwsmEH20zzEfSNTed',
+      logo: 'https://cdn.brandfetch.io/meta.com/w/512/h/512/icon',
       href: '/marketing/meta',
       active: true
     },
@@ -16,7 +16,7 @@ export default function MarketingPage() {
       id: 'tiktok',
       name: 'TikTok Ads',
       description: 'Demnächst verfügbar',
-      logo: 'https://cdn.brandfetch.io/id9IPbPHxH/w/400/h/400/theme/dark/icon.png?c=1bfwsmEH20zzEfSNTed',
+      logo: 'https://cdn.brandfetch.io/tiktok.com/w/512/h/512/icon',
       href: '/marketing/tiktok',
       active: false
     },
@@ -24,7 +24,7 @@ export default function MarketingPage() {
       id: 'google',
       name: 'Google Ads',
       description: 'Demnächst verfügbar',
-      logo: 'https://cdn.brandfetch.io/id6O2oGzv-/w/400/h/400/theme/dark/icon.png?c=1bfwsmEH20zzEfSNTed',
+      logo: 'https://cdn.brandfetch.io/google.com/w/512/h/512/icon',
       href: '/marketing/google',
       active: false
     },

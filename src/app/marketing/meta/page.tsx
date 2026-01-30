@@ -96,7 +96,7 @@ export default function MetaAdsPage() {
           </Link>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <img 
-              src="https://cdn.brandfetch.io/idYEwRgACE/w/400/h/400/theme/dark/icon.png?c=1bfwsmEH20zzEfSNTed"
+              src="https://cdn.brandfetch.io/meta.com/w/512/h/512/icon"
               alt="Meta"
               style={{ 
                 width: '40px', 
