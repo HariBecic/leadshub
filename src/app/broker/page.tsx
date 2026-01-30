@@ -16,19 +16,22 @@ export default function BrokerPage() {
   useEffect(() => { loadBrokers() }, [])
 
   async function loadBrokers() {
-    const { data, error } = await supabase
+    // Load brokers
+    const { data: brokersData, error } = await supabase
       .from('brokers')
       .select('*')
       .order('created_at', { ascending: false })
     
     if (error) {
       console.error('Error loading brokers:', error)
+      setLoading(false)
+      return
     }
-    
-    // Load contracts separately
-    const brokersWithContracts = await Promise.all((data || []).map(async (broker) => {
+
+    // Load contracts for each broker from 'contracts' table (not broker_contracts)
+    const brokersWithContracts = await Promise.all((brokersData || []).map(async (broker) => {
       const { data: contracts } = await supabase
-        .from('broker_contracts')
+        .from('contracts')
         .select('id, status')
         .eq('broker_id', broker.id)
       return { ...broker, contracts: contracts || [] }
@@ -124,6 +127,15 @@ export default function BrokerPage() {
           )
         })}
       </div>
+
+      {filtered.length === 0 && (
+        <div className="card" style={{ textAlign: 'center', padding: '40px' }}>
+          <div style={{ opacity: 0.6, marginBottom: '16px' }}>Keine Broker gefunden</div>
+          <button onClick={() => setShowModal(true)} className="btn btn-primary">
+            <Plus size={18} /> Ersten Broker anlegen
+          </button>
+        </div>
+      )}
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
