@@ -1,15 +1,29 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
 const META_ACCESS_TOKEN = process.env.META_ACCESS_TOKEN || ''
 const BUSINESS_ID = process.env.META_BUSINESS_ID || '1506294637305314'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     if (!META_ACCESS_TOKEN) {
       return NextResponse.json({ error: 'META_ACCESS_TOKEN nicht konfiguriert' }, { status: 500 })
     }
 
+    const searchParams = request.nextUrl.searchParams
+    const range = searchParams.get('range') || 'last_7d'
+    
+    // Map range to Meta date_preset
+    const datePresetMap: Record<string, string> = {
+      'last_7d': 'last_7d',
+      'last_14d': 'last_14d', 
+      'last_30d': 'last_30d',
+      'this_month': 'this_month'
+    }
+    const datePreset = datePresetMap[range] || 'last_7d'
+
     // Get all ad accounts from business
+    let accounts: any[] = []
+    
     const accountsResponse = await fetch(
       `https://graph.facebook.com/v18.0/${BUSINESS_ID}/owned_ad_accounts?fields=id,name,currency,account_status&access_token=${META_ACCESS_TOKEN}`
     )
@@ -27,59 +41,90 @@ export async function GET() {
         return NextResponse.json({ error: 'Meta API Fehler', details: directData.error }, { status: 400 })
       }
       
-      accountsData.data = [directData]
+      accounts = [directData]
+    } else {
+      accounts = accountsData.data || []
     }
 
-    const accounts = accountsData.data || []
     const result = []
+    let totalInsights = {
+      spend: 0,
+      impressions: 0,
+      clicks: 0,
+      ctr: 0,
+      cpc: 0,
+      reach: 0
+    }
+    let dailyInsights: any[] = []
 
     for (const account of accounts) {
       const accountId = account.id.replace('act_', '')
       
-      // Get campaigns for this account
+      // Get account-level insights
+      try {
+        const insightsResponse = await fetch(
+          `https://graph.facebook.com/v18.0/act_${accountId}/insights?fields=spend,impressions,clicks,ctr,cpc,reach&date_preset=${datePreset}&access_token=${META_ACCESS_TOKEN}`
+        )
+        const insightsData = await insightsResponse.json()
+        
+        if (insightsData.data && insightsData.data[0]) {
+          const ins = insightsData.data[0]
+          totalInsights.spend += parseFloat(ins.spend || 0)
+          totalInsights.impressions += parseInt(ins.impressions || 0)
+          totalInsights.clicks += parseInt(ins.clicks || 0)
+          totalInsights.reach += parseInt(ins.reach || 0)
+        }
+      } catch (e) {
+        console.error('Error fetching account insights:', e)
+      }
+
+      // Get daily insights for chart
+      try {
+        const dailyResponse = await fetch(
+          `https://graph.facebook.com/v18.0/act_${accountId}/insights?fields=spend,impressions,clicks,ctr&date_preset=${datePreset}&time_increment=1&access_token=${META_ACCESS_TOKEN}`
+        )
+        const dailyData = await dailyResponse.json()
+        
+        if (dailyData.data) {
+          dailyInsights = dailyData.data.map((d: any) => ({
+            date: d.date_start,
+            spend: parseFloat(d.spend || 0),
+            impressions: parseInt(d.impressions || 0),
+            clicks: parseInt(d.clicks || 0),
+            ctr: parseFloat(d.ctr || 0)
+          }))
+        }
+      } catch (e) {
+        console.error('Error fetching daily insights:', e)
+      }
+
+      // Get campaigns
       const campaignsResponse = await fetch(
         `https://graph.facebook.com/v18.0/act_${accountId}/campaigns?fields=id,name,status,effective_status,daily_budget,lifetime_budget,objective&access_token=${META_ACCESS_TOKEN}`
       )
       const campaignsData = await campaignsResponse.json()
 
-      const campaigns = []
-      
-      for (const campaign of (campaignsData.data || [])) {
-        // Get insights for last 30 days
-        let insights = null
-        try {
-          const insightsResponse = await fetch(
-            `https://graph.facebook.com/v18.0/${campaign.id}/insights?fields=spend,impressions,clicks,cpc,ctr&date_preset=last_30d&access_token=${META_ACCESS_TOKEN}`
-          )
-          const insightsData = await insightsResponse.json()
-          if (insightsData.data && insightsData.data[0]) {
-            insights = insightsData.data[0]
-          }
-        } catch (e) {
-          // Insights might not be available
-        }
-
-        campaigns.push({
-          id: campaign.id,
-          name: campaign.name,
-          status: campaign.status,
-          effective_status: campaign.effective_status,
-          daily_budget: campaign.daily_budget,
-          lifetime_budget: campaign.lifetime_budget,
-          objective: campaign.objective,
-          insights
-        })
-      }
-
       result.push({
         id: account.id,
         name: account.name || `Account ${accountId}`,
         currency: account.currency || 'CHF',
-        campaigns
+        campaigns: campaignsData.data || []
       })
     }
 
-    return NextResponse.json({ accounts: result })
+    // Calculate averages
+    if (totalInsights.clicks > 0 && totalInsights.impressions > 0) {
+      totalInsights.ctr = (totalInsights.clicks / totalInsights.impressions) * 100
+    }
+    if (totalInsights.clicks > 0 && totalInsights.spend > 0) {
+      totalInsights.cpc = totalInsights.spend / totalInsights.clicks
+    }
+
+    return NextResponse.json({ 
+      accounts: result,
+      insights: totalInsights,
+      dailyInsights: dailyInsights
+    })
 
   } catch (err: any) {
     console.error('Meta Ads API error:', err)
