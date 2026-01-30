@@ -18,18 +18,22 @@ export default function Sidebar() {
 
   return (
     <aside className="sidebar">
-      {/* Logo prominent anzeigen */}
+      {/* Logo gross und prominent */}
       <div className="sidebar-logo desktop-only" style={{ 
-        padding: '8px 16px 24px 16px',
-        marginBottom: '8px'
+        padding: '0 16px',
+        height: '80px',
+        display: 'flex',
+        alignItems: 'center',
+        marginBottom: '16px'
       }}>
         <img 
           src="/logo.png" 
           alt="LeadsHub" 
           style={{ 
-            height: '48px',
+            height: '60px',
             width: 'auto',
-            filter: 'drop-shadow(0 2px 8px rgba(139, 92, 246, 0.3))'
+            maxWidth: '100%',
+            objectFit: 'contain'
           }} 
         />
       </div>
