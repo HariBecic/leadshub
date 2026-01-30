@@ -41,17 +41,19 @@ export async function GET(
       pkg = pkgData
     }
 
-    const invoiceDate = new Date(invoice.created_at).toLocaleDateString('de-CH')
-    const dueDate = invoice.due_date ? new Date(invoice.due_date).toLocaleDateString('de-CH') : '-'
+    const invoiceDate = new Date(invoice.created_at).toLocaleDateString('de-CH', { day: 'numeric', month: 'long', year: 'numeric' })
+    const dueDate = invoice.due_date ? new Date(invoice.due_date).toLocaleDateString('de-CH', { day: 'numeric', month: 'long', year: 'numeric' }) : '30 Tage netto'
     
-    // Determine description
+    // Determine line items
     let description = invoice.description || 'Lead-Dienstleistung'
     let quantity = 1
+    let unit = 'Stk'
     let unitPrice = Number(invoice.amount)
     
     if (pkg) {
-      description = `Lead-Paket: ${pkg.name} (${pkg.total_leads} Leads)`
+      description = `Lead-Paket "${pkg.name}"`
       quantity = pkg.total_leads
+      unit = 'Leads'
       unitPrice = Number(invoice.amount) / pkg.total_leads
     }
 
@@ -62,338 +64,374 @@ export async function GET(
   <meta charset="utf-8">
   <title>Rechnung ${invoice.invoice_number}</title>
   <style>
+    @page { size: A4; margin: 0; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { 
       font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; 
-      font-size: 11pt;
-      color: #1e293b;
-      padding: 50px;
-      max-width: 800px;
-      margin: 0 auto;
+      font-size: 10pt;
+      color: #1a1a2e;
       background: white;
+      min-height: 100vh;
     }
     
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      padding: 15mm 20mm;
+      margin: 0 auto;
+      background: white;
+      position: relative;
+    }
+    
+    /* Header with logo and company info side by side */
     .header {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      margin-bottom: 50px;
-      padding-bottom: 25px;
-      border-bottom: 3px solid #6366f1;
+      margin-bottom: 15mm;
     }
     
-    .logo {
-      font-size: 28pt;
-      font-weight: 700;
-      color: #1e1b4b;
+    .logo-section img {
+      height: 40px;
+      width: auto;
     }
-    .logo .hub { color: #f97316; }
-    .logo .dot { color: #6366f1; }
     
-    .company-info {
-      text-align: right;
+    .company-details {
+      text-align: left;
+      font-size: 9pt;
+      color: #4a4a68;
+      line-height: 1.6;
+    }
+    
+    /* Two column address section */
+    .address-section {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 12mm;
+    }
+    
+    .sender-info {
+      font-size: 9pt;
+      color: #4a4a68;
+      line-height: 1.6;
+    }
+    
+    .recipient-box {
+      width: 85mm;
+      padding: 5mm;
+      background: #f8f9fc;
+      border-radius: 4px;
+    }
+    
+    .recipient-label {
+      font-size: 8pt;
+      color: #6366f1;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 2mm;
+    }
+    
+    .recipient-content {
       font-size: 10pt;
-      color: #64748b;
-      line-height: 1.7;
+      line-height: 1.6;
     }
     
-    .invoice-header {
-      margin-bottom: 40px;
+    .recipient-content strong {
+      font-size: 11pt;
+      color: #1a1a2e;
+    }
+    
+    /* Invoice title section */
+    .invoice-title-section {
+      border-bottom: 2px solid #6366f1;
+      padding-bottom: 5mm;
+      margin-bottom: 8mm;
     }
     
     .invoice-title {
-      font-size: 32pt;
+      font-size: 22pt;
       font-weight: 700;
-      color: #1e1b4b;
-      margin-bottom: 5px;
+      color: #1a1a2e;
     }
     
-    .invoice-number {
-      font-size: 14pt;
+    .invoice-title span {
       color: #6366f1;
-      font-weight: 600;
     }
     
-    .addresses {
+    /* Meta row */
+    .meta-row {
       display: flex;
-      justify-content: space-between;
-      margin-bottom: 40px;
+      gap: 15mm;
+      margin-bottom: 10mm;
+      font-size: 10pt;
     }
     
-    .address-block { width: 48%; }
+    .meta-item {
+      display: flex;
+      gap: 3mm;
+    }
     
-    .address-label {
-      font-size: 9pt;
-      text-transform: uppercase;
-      letter-spacing: 1.5px;
-      color: #94a3b8;
-      margin-bottom: 10px;
+    .meta-label {
+      color: #6b7280;
+    }
+    
+    .meta-value {
       font-weight: 600;
+      color: #1a1a2e;
     }
     
-    .address-content {
-      font-size: 11pt;
-      line-height: 1.7;
+    /* Intro text */
+    .intro-text {
+      margin-bottom: 8mm;
+      font-size: 10pt;
+      color: #4a4a68;
+      line-height: 1.6;
     }
     
-    .address-content strong {
-      font-size: 12pt;
-      color: #1e1b4b;
-      display: block;
-      margin-bottom: 5px;
-    }
-    
-    .meta-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 20px;
-      margin-bottom: 40px;
-      background: #f8fafc;
-      padding: 20px;
-      border-radius: 8px;
-    }
-    
-    .meta-item label {
-      font-size: 9pt;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: #94a3b8;
-      display: block;
-      margin-bottom: 5px;
-    }
-    
-    .meta-item span {
-      font-weight: 600;
-      color: #1e293b;
-    }
-    
+    /* Items table */
     .items-table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 30px;
+      margin-bottom: 5mm;
+      font-size: 10pt;
     }
     
     .items-table th {
       background: #1e1b4b;
       color: white;
-      padding: 15px 20px;
+      padding: 3mm 4mm;
       text-align: left;
       font-weight: 600;
-      font-size: 10pt;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+      font-size: 9pt;
     }
     
-    .items-table th:last-child,
-    .items-table td:last-child {
-      text-align: right;
-    }
+    .items-table th:nth-child(1) { width: 15%; }
+    .items-table th:nth-child(2) { width: 10%; }
+    .items-table th:nth-child(3) { width: 40%; }
+    .items-table th:nth-child(4) { width: 17%; text-align: right; }
+    .items-table th:nth-child(5) { width: 18%; text-align: right; }
     
     .items-table td {
-      padding: 20px;
-      border-bottom: 1px solid #e2e8f0;
-      font-size: 11pt;
+      padding: 4mm;
+      border-bottom: 1px solid #e5e7eb;
+      vertical-align: top;
     }
     
-    .totals {
-      margin-left: auto;
-      width: 300px;
-      margin-bottom: 40px;
-    }
-    
-    .totals table { width: 100%; }
-    
-    .totals td {
-      padding: 12px 0;
-      font-size: 11pt;
-    }
-    
-    .totals td:last-child {
+    .items-table td:nth-child(4),
+    .items-table td:nth-child(5) {
       text-align: right;
-      font-weight: 500;
     }
     
-    .totals .total-row {
-      border-top: 3px solid #1e1b4b;
+    /* Totals */
+    .totals-section {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 10mm;
     }
     
-    .totals .total-row td {
-      padding-top: 15px;
-      font-size: 16pt;
+    .totals-box {
+      width: 70mm;
+    }
+    
+    .totals-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 2mm 0;
+      font-size: 10pt;
+    }
+    
+    .totals-row.subtotal {
+      border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .totals-row.total {
+      border-top: 2px solid #1e1b4b;
+      margin-top: 2mm;
+      padding-top: 3mm;
+      font-size: 14pt;
       font-weight: 700;
       color: #1e1b4b;
     }
     
-    .payment-box {
-      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+    /* Payment info */
+    .payment-section {
+      background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
       color: white;
-      border-radius: 12px;
-      padding: 30px;
-      margin-top: 40px;
+      border-radius: 6px;
+      padding: 6mm;
+      margin-bottom: 10mm;
     }
     
-    .payment-box h3 {
-      font-size: 14pt;
-      margin-bottom: 20px;
-      font-weight: 600;
-    }
-    
-    .payment-box table { width: 100%; }
-    
-    .payment-box td {
-      padding: 8px 0;
+    .payment-title {
       font-size: 11pt;
+      font-weight: 600;
+      margin-bottom: 4mm;
+      display: flex;
+      align-items: center;
+      gap: 2mm;
     }
     
-    .payment-box td:first-child {
+    .payment-grid {
+      display: grid;
+      grid-template-columns: 25mm 1fr;
+      gap: 2mm 4mm;
+      font-size: 10pt;
+    }
+    
+    .payment-label {
       opacity: 0.8;
-      width: 120px;
     }
     
-    .payment-box td:last-child {
+    .payment-value {
       font-weight: 500;
     }
     
-    .footer {
-      margin-top: 60px;
-      padding-top: 20px;
-      border-top: 1px solid #e2e8f0;
-      text-align: center;
-      font-size: 9pt;
-      color: #94a3b8;
-    }
-    
-    .status {
-      display: inline-block;
-      padding: 6px 16px;
-      border-radius: 20px;
+    /* Closing */
+    .closing {
       font-size: 10pt;
-      font-weight: 600;
-      text-transform: uppercase;
+      color: #4a4a68;
+      line-height: 1.8;
     }
     
-    .status-pending { background: #fef3c7; color: #92400e; }
-    .status-paid { background: #d1fae5; color: #065f46; }
-    .status-sent { background: #dbeafe; color: #1e40af; }
+    /* Footer */
+    .footer {
+      position: absolute;
+      bottom: 10mm;
+      left: 20mm;
+      right: 20mm;
+      text-align: center;
+      font-size: 8pt;
+      color: #9ca3af;
+      border-top: 1px solid #e5e7eb;
+      padding-top: 4mm;
+    }
     
     @media print {
-      body { padding: 20px; }
-      .payment-box { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .page { width: 100%; padding: 10mm 15mm; }
     }
   </style>
 </head>
 <body>
-  
-  <div class="header">
-    <div class="logo">leads<span class="hub">hub</span><span class="dot">°</span></div>
-    <div class="company-info">
-      <strong>LeadsHub</strong><br>
-      Sandäckerstrasse 10<br>
-      8957 Spreitenbach<br>
-      Schweiz<br>
-      info@leadshub.ch
-    </div>
-  </div>
-  
-  <div class="invoice-header">
-    <div class="invoice-title">RECHNUNG</div>
-    <div class="invoice-number">${invoice.invoice_number}</div>
-  </div>
-  
-  <div class="addresses">
-    <div class="address-block">
-      <div class="address-label">Rechnungsempfänger</div>
-      <div class="address-content">
-        <strong>${broker?.name || '-'}</strong>
-        ${broker?.contact_person ? broker.contact_person + '<br>' : ''}
-        ${broker?.email || ''}<br>
-        ${broker?.phone || ''}
+  <div class="page">
+    
+    <!-- Header -->
+    <div class="header">
+      <div class="logo-section">
+        <img src="https://leadshub2.vercel.app/logo.png" alt="LeadsHub" />
+      </div>
+      <div class="company-details">
+        <strong>LeadsHub</strong><br>
+        Sandäckerstrasse 10<br>
+        8957 Spreitenbach<br>
+        info@leadshub.ch
       </div>
     </div>
-    <div class="address-block" style="text-align: right;">
-      <span class="status status-${invoice.status}">
-        ${invoice.status === 'paid' ? 'Bezahlt' : invoice.status === 'sent' ? 'Gesendet' : 'Offen'}
-      </span>
+    
+    <!-- Address Section -->
+    <div class="address-section">
+      <div class="sender-info">
+        LeadsHub · Sandäckerstrasse 10 · 8957 Spreitenbach
+      </div>
+      <div class="recipient-box">
+        <div class="recipient-label">Rechnungsempfänger</div>
+        <div class="recipient-content">
+          <strong>${broker?.name || '-'}</strong><br>
+          ${broker?.contact_person ? broker.contact_person + '<br>' : ''}
+          ${broker?.email || ''}
+        </div>
+      </div>
     </div>
-  </div>
-  
-  <div class="meta-grid">
-    <div class="meta-item">
-      <label>Rechnungsdatum</label>
-      <span>${invoiceDate}</span>
+    
+    <!-- Invoice Title -->
+    <div class="invoice-title-section">
+      <div class="invoice-title">Rechnung <span>${invoice.invoice_number}</span></div>
     </div>
-    <div class="meta-item">
-      <label>Fällig bis</label>
-      <span>${dueDate}</span>
+    
+    <!-- Meta Row -->
+    <div class="meta-row">
+      <div class="meta-item">
+        <span class="meta-label">Datum:</span>
+        <span class="meta-value">${invoiceDate}</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">Zahlbar bis:</span>
+        <span class="meta-value">${dueDate}</span>
+      </div>
     </div>
-    <div class="meta-item">
-      <label>Rechnungsnr.</label>
-      <span>${invoice.invoice_number}</span>
+    
+    <!-- Intro -->
+    <div class="intro-text">
+      Vielen Dank für Ihr Vertrauen. Hiermit stellen wir Ihnen folgende Leistungen in Rechnung:
     </div>
-  </div>
-  
-  <table class="items-table">
-    <thead>
-      <tr>
-        <th>Beschreibung</th>
-        <th>Menge</th>
-        <th>Einzelpreis</th>
-        <th>Betrag</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>${description}</td>
-        <td>${quantity}</td>
-        <td>CHF ${unitPrice.toFixed(2)}</td>
-        <td>CHF ${Number(invoice.amount).toFixed(2)}</td>
-      </tr>
-    </tbody>
-  </table>
-  
-  <div class="totals">
-    <table>
-      <tr>
-        <td>Zwischensumme</td>
-        <td>CHF ${Number(invoice.amount).toFixed(2)}</td>
-      </tr>
-      <tr>
-        <td>MwSt. (0%)</td>
-        <td>CHF 0.00</td>
-      </tr>
-      <tr class="total-row">
-        <td>Total</td>
-        <td>CHF ${Number(invoice.amount).toFixed(2)}</td>
-      </tr>
+    
+    <!-- Items Table -->
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th>Menge</th>
+          <th>Einheit</th>
+          <th>Beschreibung</th>
+          <th>Einzelpreis</th>
+          <th>Gesamtpreis</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>${quantity}</td>
+          <td>${unit}</td>
+          <td>${description}</td>
+          <td>CHF ${unitPrice.toFixed(2)}</td>
+          <td>CHF ${Number(invoice.amount).toFixed(2)}</td>
+        </tr>
+      </tbody>
     </table>
+    
+    <!-- Totals -->
+    <div class="totals-section">
+      <div class="totals-box">
+        <div class="totals-row subtotal">
+          <span>Zwischensumme</span>
+          <span>CHF ${Number(invoice.amount).toFixed(2)}</span>
+        </div>
+        <div class="totals-row">
+          <span>MwSt. (0%)</span>
+          <span>CHF 0.00</span>
+        </div>
+        <div class="totals-row total">
+          <span>Gesamttotal</span>
+          <span>CHF ${Number(invoice.amount).toFixed(2)}</span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Payment Info -->
+    <div class="payment-section">
+      <div class="payment-title">💳 Zahlungsinformationen</div>
+      <div class="payment-grid">
+        <span class="payment-label">Bank:</span>
+        <span class="payment-value">Raiffeisenbank</span>
+        <span class="payment-label">IBAN:</span>
+        <span class="payment-value">CH93 0076 2011 6238 5295 7</span>
+        <span class="payment-label">Empfänger:</span>
+        <span class="payment-value">LeadsHub, 8957 Spreitenbach</span>
+        <span class="payment-label">Referenz:</span>
+        <span class="payment-value">${invoice.invoice_number}</span>
+      </div>
+    </div>
+    
+    <!-- Closing -->
+    <div class="closing">
+      Freundliche Grüsse<br>
+      <strong>LeadsHub</strong>
+    </div>
+    
+    <!-- Footer -->
+    <div class="footer">
+      LeadsHub · Sandäckerstrasse 10 · 8957 Spreitenbach · Schweiz · info@leadshub.ch
+    </div>
+    
   </div>
-  
-  <div class="payment-box">
-    <h3>💳 Zahlungsinformationen</h3>
-    <table>
-      <tr>
-        <td>Bank</td>
-        <td>Raiffeisenbank</td>
-      </tr>
-      <tr>
-        <td>IBAN</td>
-        <td>CH93 0076 2011 6238 5295 7</td>
-      </tr>
-      <tr>
-        <td>Empfänger</td>
-        <td>LeadsHub, 8957 Spreitenbach</td>
-      </tr>
-      <tr>
-        <td>Referenz</td>
-        <td><strong>${invoice.invoice_number}</strong></td>
-      </tr>
-    </table>
-  </div>
-  
-  <div class="footer">
-    LeadsHub · Sandäckerstrasse 10 · 8957 Spreitenbach · Schweiz · info@leadshub.ch
-  </div>
-  
 </body>
 </html>
     `
