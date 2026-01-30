@@ -70,16 +70,59 @@ export async function GET(
       font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; 
       font-size: 10pt;
       color: #1a1a2e;
-      background: white;
-      min-height: 100vh;
+      background: #f3f4f6;
+    }
+    
+    /* Print Button */
+    .print-bar {
+      background: #1e1b4b;
+      padding: 12px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+    }
+    
+    .print-bar-title {
+      color: white;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    
+    .print-btn {
+      background: #6366f1;
+      color: white;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .print-btn:hover {
+      background: #4f46e5;
+    }
+    
+    .page-wrapper {
+      padding: 70px 20px 20px;
+      display: flex;
+      justify-content: center;
     }
     
     .page {
       width: 210mm;
       min-height: 297mm;
       padding: 15mm 20mm;
-      margin: 0 auto;
       background: white;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
       position: relative;
     }
     
@@ -97,23 +140,25 @@ export async function GET(
     }
     
     .company-details {
-      text-align: left;
+      text-align: right;
       font-size: 9pt;
       color: #4a4a68;
       line-height: 1.6;
     }
     
-    /* Two column address section */
-    .address-section {
+    /* Recipient section - aligned right */
+    .recipient-section {
       display: flex;
-      justify-content: space-between;
+      flex-direction: column;
+      align-items: flex-end;
       margin-bottom: 12mm;
     }
     
-    .sender-info {
-      font-size: 9pt;
-      color: #4a4a68;
-      line-height: 1.6;
+    .sender-line {
+      font-size: 8pt;
+      color: #6366f1;
+      margin-bottom: 2mm;
+      text-decoration: underline;
     }
     
     .recipient-box {
@@ -121,6 +166,7 @@ export async function GET(
       padding: 5mm;
       background: #f8f9fc;
       border-radius: 4px;
+      border-left: 3px solid #6366f1;
     }
     
     .recipient-label {
@@ -129,6 +175,7 @@ export async function GET(
       text-transform: uppercase;
       letter-spacing: 0.5px;
       margin-bottom: 2mm;
+      font-weight: 600;
     }
     
     .recipient-content {
@@ -205,10 +252,10 @@ export async function GET(
       font-size: 9pt;
     }
     
-    .items-table th:nth-child(1) { width: 15%; }
-    .items-table th:nth-child(2) { width: 10%; }
+    .items-table th:nth-child(1) { width: 12%; }
+    .items-table th:nth-child(2) { width: 12%; }
     .items-table th:nth-child(3) { width: 40%; }
-    .items-table th:nth-child(4) { width: 17%; text-align: right; }
+    .items-table th:nth-child(4) { width: 18%; text-align: right; }
     .items-table th:nth-child(5) { width: 18%; text-align: right; }
     
     .items-table td {
@@ -307,130 +354,158 @@ export async function GET(
     }
     
     @media print {
-      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .page { width: 100%; padding: 10mm 15mm; }
+      body { background: white; }
+      .print-bar { display: none !important; }
+      .page-wrapper { padding: 0; }
+      .page { 
+        width: 100%; 
+        box-shadow: none; 
+        padding: 10mm 15mm;
+      }
+      .payment-section {
+        -webkit-print-color-adjust: exact; 
+        print-color-adjust: exact;
+      }
+      .items-table th {
+        -webkit-print-color-adjust: exact; 
+        print-color-adjust: exact;
+      }
     }
   </style>
 </head>
 <body>
-  <div class="page">
-    
-    <!-- Header -->
-    <div class="header">
-      <div class="logo-section">
-        <img src="https://leadshub2.vercel.app/logo.png" alt="LeadsHub" />
-      </div>
-      <div class="company-details">
-        <strong>LeadsHub</strong><br>
-        Sandäckerstrasse 10<br>
-        8957 Spreitenbach<br>
-        info@leadshub.ch
-      </div>
-    </div>
-    
-    <!-- Address Section -->
-    <div class="address-section">
-      <div class="sender-info">
-        LeadsHub · Sandäckerstrasse 10 · 8957 Spreitenbach
-      </div>
-      <div class="recipient-box">
-        <div class="recipient-label">Rechnungsempfänger</div>
-        <div class="recipient-content">
-          <strong>${broker?.name || '-'}</strong><br>
-          ${broker?.contact_person ? broker.contact_person + '<br>' : ''}
-          ${broker?.email || ''}
+  
+  <!-- Print Bar -->
+  <div class="print-bar">
+    <span class="print-bar-title">Rechnung ${invoice.invoice_number}</span>
+    <button class="print-btn" onclick="window.print()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M6 9V2h12v7"></path>
+        <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+        <rect x="6" y="14" width="12" height="8"></rect>
+      </svg>
+      Als PDF drucken
+    </button>
+  </div>
+  
+  <div class="page-wrapper">
+    <div class="page">
+      
+      <!-- Header -->
+      <div class="header">
+        <div class="logo-section">
+          <img src="https://leadshub2.vercel.app/logo.png" alt="LeadsHub" />
+        </div>
+        <div class="company-details">
+          <strong>LeadsHub</strong><br>
+          Sandäckerstrasse 10<br>
+          8957 Spreitenbach<br>
+          info@leadshub.ch
         </div>
       </div>
-    </div>
-    
-    <!-- Invoice Title -->
-    <div class="invoice-title-section">
-      <div class="invoice-title">Rechnung <span>${invoice.invoice_number}</span></div>
-    </div>
-    
-    <!-- Meta Row -->
-    <div class="meta-row">
-      <div class="meta-item">
-        <span class="meta-label">Datum:</span>
-        <span class="meta-value">${invoiceDate}</span>
-      </div>
-      <div class="meta-item">
-        <span class="meta-label">Zahlbar bis:</span>
-        <span class="meta-value">${dueDate}</span>
-      </div>
-    </div>
-    
-    <!-- Intro -->
-    <div class="intro-text">
-      Vielen Dank für Ihr Vertrauen. Hiermit stellen wir Ihnen folgende Leistungen in Rechnung:
-    </div>
-    
-    <!-- Items Table -->
-    <table class="items-table">
-      <thead>
-        <tr>
-          <th>Menge</th>
-          <th>Einheit</th>
-          <th>Beschreibung</th>
-          <th>Einzelpreis</th>
-          <th>Gesamtpreis</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>${quantity}</td>
-          <td>${unit}</td>
-          <td>${description}</td>
-          <td>CHF ${unitPrice.toFixed(2)}</td>
-          <td>CHF ${Number(invoice.amount).toFixed(2)}</td>
-        </tr>
-      </tbody>
-    </table>
-    
-    <!-- Totals -->
-    <div class="totals-section">
-      <div class="totals-box">
-        <div class="totals-row subtotal">
-          <span>Zwischensumme</span>
-          <span>CHF ${Number(invoice.amount).toFixed(2)}</span>
-        </div>
-        <div class="totals-row">
-          <span>MwSt. (0%)</span>
-          <span>CHF 0.00</span>
-        </div>
-        <div class="totals-row total">
-          <span>Gesamttotal</span>
-          <span>CHF ${Number(invoice.amount).toFixed(2)}</span>
+      
+      <!-- Recipient Section - Right Aligned -->
+      <div class="recipient-section">
+        <div class="sender-line">LeadsHub · Sandäckerstrasse 10 · 8957 Spreitenbach</div>
+        <div class="recipient-box">
+          <div class="recipient-label">Rechnungsempfänger</div>
+          <div class="recipient-content">
+            <strong>${broker?.name || '-'}</strong><br>
+            ${broker?.contact_person ? broker.contact_person + '<br>' : ''}
+            ${broker?.email || ''}
+          </div>
         </div>
       </div>
-    </div>
-    
-    <!-- Payment Info -->
-    <div class="payment-section">
-      <div class="payment-title">💳 Zahlungsinformationen</div>
-      <div class="payment-grid">
-        <span class="payment-label">Bank:</span>
-        <span class="payment-value">Raiffeisenbank</span>
-        <span class="payment-label">IBAN:</span>
-        <span class="payment-value">CH93 0076 2011 6238 5295 7</span>
-        <span class="payment-label">Empfänger:</span>
-        <span class="payment-value">LeadsHub, 8957 Spreitenbach</span>
-        <span class="payment-label">Referenz:</span>
-        <span class="payment-value">${invoice.invoice_number}</span>
+      
+      <!-- Invoice Title -->
+      <div class="invoice-title-section">
+        <div class="invoice-title">Rechnung <span>${invoice.invoice_number}</span></div>
       </div>
+      
+      <!-- Meta Row -->
+      <div class="meta-row">
+        <div class="meta-item">
+          <span class="meta-label">Datum:</span>
+          <span class="meta-value">${invoiceDate}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Zahlbar bis:</span>
+          <span class="meta-value">${dueDate}</span>
+        </div>
+      </div>
+      
+      <!-- Intro -->
+      <div class="intro-text">
+        Vielen Dank für Ihr Vertrauen. Hiermit stellen wir Ihnen folgende Leistungen in Rechnung:
+      </div>
+      
+      <!-- Items Table -->
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th>Menge</th>
+            <th>Einheit</th>
+            <th>Beschreibung</th>
+            <th>Einzelpreis</th>
+            <th>Gesamtpreis</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>${quantity}</td>
+            <td>${unit}</td>
+            <td>${description}</td>
+            <td>CHF ${unitPrice.toFixed(2)}</td>
+            <td>CHF ${Number(invoice.amount).toFixed(2)}</td>
+          </tr>
+        </tbody>
+      </table>
+      
+      <!-- Totals -->
+      <div class="totals-section">
+        <div class="totals-box">
+          <div class="totals-row subtotal">
+            <span>Zwischensumme</span>
+            <span>CHF ${Number(invoice.amount).toFixed(2)}</span>
+          </div>
+          <div class="totals-row">
+            <span>MwSt. (0%)</span>
+            <span>CHF 0.00</span>
+          </div>
+          <div class="totals-row total">
+            <span>Gesamttotal</span>
+            <span>CHF ${Number(invoice.amount).toFixed(2)}</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Payment Info -->
+      <div class="payment-section">
+        <div class="payment-title">💳 Zahlungsinformationen</div>
+        <div class="payment-grid">
+          <span class="payment-label">Bank:</span>
+          <span class="payment-value">Raiffeisenbank</span>
+          <span class="payment-label">IBAN:</span>
+          <span class="payment-value">CH93 0076 2011 6238 5295 7</span>
+          <span class="payment-label">Empfänger:</span>
+          <span class="payment-value">LeadsHub, 8957 Spreitenbach</span>
+          <span class="payment-label">Referenz:</span>
+          <span class="payment-value">${invoice.invoice_number}</span>
+        </div>
+      </div>
+      
+      <!-- Closing -->
+      <div class="closing">
+        Freundliche Grüsse<br>
+        <strong>LeadsHub</strong>
+      </div>
+      
+      <!-- Footer -->
+      <div class="footer">
+        LeadsHub · Sandäckerstrasse 10 · 8957 Spreitenbach · Schweiz · info@leadshub.ch
+      </div>
+      
     </div>
-    
-    <!-- Closing -->
-    <div class="closing">
-      Freundliche Grüsse<br>
-      <strong>LeadsHub</strong>
-    </div>
-    
-    <!-- Footer -->
-    <div class="footer">
-      LeadsHub · Sandäckerstrasse 10 · 8957 Spreitenbach · Schweiz · info@leadshub.ch
-    </div>
-    
   </div>
 </body>
 </html>
