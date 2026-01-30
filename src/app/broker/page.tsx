@@ -16,14 +16,17 @@ export default function BrokerPage() {
   useEffect(() => { loadBrokers() }, [])
 
   async function loadBrokers() {
-    const { data } = await supabase.from('brokers').select('*').order('created_at', { ascending: false })
+    const { data } = await supabase
+      .from('brokers')
+      .select('*, contracts:broker_contracts(id, status)')
+      .order('created_at', { ascending: false })
     setBrokers(data || [])
     setLoading(false)
   }
 
   async function createBroker(e: React.FormEvent) {
     e.preventDefault()
-    await supabase.from('brokers').insert(formData)
+    await supabase.from('brokers').insert({ ...formData, is_active: true })
     setShowModal(false)
     setFormData({ name: '', contact_person: '', email: '', phone: '' })
     loadBrokers()
@@ -60,42 +63,52 @@ export default function BrokerPage() {
         </div>
       </div>
 
-      <div className="card">
-        <div className="table-responsive">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Kontaktperson</th>
-                <th>Kontakt</th>
-                <th>Status</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((broker) => (
-                <tr key={broker.id}>
-                  <td style={{ fontWeight: 500 }}>{broker.name}</td>
-                  <td>{broker.contact_person}</td>
-                  <td>
-                    <div>{broker.email}</div>
-                    <div style={{ opacity: 0.7, fontSize: '13px' }}>{broker.phone}</div>
-                  </td>
-                  <td>
-                    <span className={`badge ${broker.is_active ? 'badge-success' : 'badge-neutral'}`}>
-                      {broker.is_active ? 'Aktiv' : 'Inaktiv'}
-                    </span>
-                  </td>
-                  <td>
-                    <Link href={`/broker/${broker.id}`} className="btn btn-sm btn-secondary">
-                      Details
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {/* Broker Cards Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '20px' }}>
+        {filtered.map((broker) => {
+          const activeContracts = broker.contracts?.filter((c: any) => c.status === 'active').length || 0
+          return (
+            <Link href={`/broker/${broker.id}`} key={broker.id} style={{ textDecoration: 'none' }}>
+              <div className="card" style={{ cursor: 'pointer', transition: 'all 0.2s', height: '100%' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                  <div>
+                    <h3 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '4px' }}>{broker.name}</h3>
+                    <div style={{ fontSize: '14px', opacity: 0.7 }}>{broker.contact_person}</div>
+                  </div>
+                  <span className={`badge ${broker.is_active ? 'badge-success' : 'badge-neutral'}`}>
+                    {broker.is_active ? 'Aktiv' : 'Inaktiv'}
+                  </span>
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+                  {broker.email && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px' }}>
+                      <span style={{ opacity: 0.5 }}>✉</span>
+                      <span>{broker.email}</span>
+                    </div>
+                  )}
+                  {broker.phone && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px' }}>
+                      <span style={{ opacity: 0.5 }}>☎</span>
+                      <span>{broker.phone}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: '16px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                  <div style={{ textAlign: 'center', flex: 1 }}>
+                    <div style={{ fontSize: '20px', fontWeight: 700, color: '#a78bfa' }}>{activeContracts}</div>
+                    <div style={{ fontSize: '12px', opacity: 0.6 }}>Aktive Verträge</div>
+                  </div>
+                  <div style={{ textAlign: 'center', flex: 1 }}>
+                    <div style={{ fontSize: '20px', fontWeight: 700, color: '#86efac' }}>{broker.contracts?.length || 0}</div>
+                    <div style={{ fontSize: '12px', opacity: 0.6 }}>Verträge Total</div>
+                  </div>
+                </div>
+              </div>
+            </Link>
+          )
+        })}
       </div>
 
       {showModal && (
