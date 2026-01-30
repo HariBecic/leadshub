@@ -16,11 +16,25 @@ export default function BrokerPage() {
   useEffect(() => { loadBrokers() }, [])
 
   async function loadBrokers() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('brokers')
-      .select('*, contracts:broker_contracts(id, status)')
+      .select('*')
       .order('created_at', { ascending: false })
-    setBrokers(data || [])
+    
+    if (error) {
+      console.error('Error loading brokers:', error)
+    }
+    
+    // Load contracts separately
+    const brokersWithContracts = await Promise.all((data || []).map(async (broker) => {
+      const { data: contracts } = await supabase
+        .from('broker_contracts')
+        .select('id, status')
+        .eq('broker_id', broker.id)
+      return { ...broker, contracts: contracts || [] }
+    }))
+    
+    setBrokers(brokersWithContracts)
     setLoading(false)
   }
 
