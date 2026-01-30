@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { Plus, Search, RefreshCw, Download, Filter, ArrowUpDown, ChevronDown, Zap } from 'lucide-react'
+import { Plus, Search, RefreshCw, Download, Zap, Check, X, Users } from 'lucide-react'
 
 interface Lead {
   id: string
@@ -26,32 +26,46 @@ interface LeadCategory {
   name: string
 }
 
+interface Broker {
+  id: string
+  company_name: string
+  contact_name: string
+}
+
 export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([])
   const [categories, setCategories] = useState<LeadCategory[]>([])
+  const [brokers, setBrokers] = useState<Broker[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filterCategory, setFilterCategory] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [sortBy, setSortBy] = useState<'created_at' | 'lead_number' | 'name'>('created_at')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
-  const [showFilters, setShowFilters] = useState(false)
   const [importStatus, setImportStatus] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [fetchingMeta, setFetchingMeta] = useState(false)
+  
+  // Multi-select
+  const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set())
+  const [showBulkAssign, setShowBulkAssign] = useState(false)
+  const [bulkBrokerId, setBulkBrokerId] = useState('')
+  const [bulkAssigning, setBulkAssigning] = useState(false)
 
   useEffect(() => { loadData() }, [])
 
   async function loadData() {
     setLoading(true)
     try {
-      const [leadsRes, categoriesRes] = await Promise.all([
+      const [leadsRes, categoriesRes, brokersRes] = await Promise.all([
         supabase.from('leads').select('*, category:lead_categories(id, name)').order('created_at', { ascending: false }),
-        supabase.from('lead_categories').select('*')
+        supabase.from('lead_categories').select('*'),
+        supabase.from('brokers').select('id, company_name, contact_name').eq('status', 'active')
       ])
       
       if (leadsRes.data) setLeads(leadsRes.data)
       if (categoriesRes.data) setCategories(categoriesRes.data)
+      if (brokersRes.data) setBrokers(brokersRes.data)
     } catch (error) {
       console.error('Error loading data:', error)
     }
@@ -88,12 +102,70 @@ export default function LeadsPage() {
     setFetchingMeta(false)
   }
 
+  async function bulkAssignLeads() {
+    if (!bulkBrokerId || selectedLeads.size === 0) return
+    setBulkAssigning(true)
+    
+    try {
+      const leadIds = Array.from(selectedLeads)
+      
+      // Create assignments for each lead
+      for (const leadId of leadIds) {
+        await supabase.from('lead_assignments').insert({
+          lead_id: leadId,
+          broker_id: bulkBrokerId,
+          status: 'pending'
+        })
+        
+        // Update lead status
+        await supabase.from('leads').update({ status: 'assigned' }).eq('id', leadId)
+      }
+      
+      setImportStatus(`${leadIds.length} Leads zugewiesen`)
+      setSelectedLeads(new Set())
+      setShowBulkAssign(false)
+      setBulkBrokerId('')
+      loadData()
+      setTimeout(() => setImportStatus(null), 3000)
+    } catch (error) {
+      console.error('Error bulk assigning:', error)
+      alert('Fehler beim Zuweisen')
+    }
+    setBulkAssigning(false)
+  }
+
   function handleSort(field: 'created_at' | 'lead_number' | 'name') {
     if (sortBy === field) {
       setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
     } else {
       setSortBy(field)
       setSortDir('desc')
+    }
+  }
+
+  function toggleSelectLead(id: string) {
+    const newSet = new Set(selectedLeads)
+    if (newSet.has(id)) {
+      newSet.delete(id)
+    } else {
+      newSet.add(id)
+    }
+    setSelectedLeads(newSet)
+  }
+
+  function toggleSelectAll() {
+    if (selectedLeads.size === filtered.length) {
+      setSelectedLeads(new Set())
+    } else {
+      setSelectedLeads(new Set(filtered.map(l => l.id)))
+    }
+  }
+
+  function formatDateTime(dateString: string) {
+    const date = new Date(dateString)
+    return {
+      date: date.toLocaleDateString('de-CH', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+      time: date.toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })
     }
   }
 
@@ -174,10 +246,31 @@ export default function LeadsPage() {
           <button 
             onClick={fetchMetaLeads} 
             disabled={fetchingMeta}
-            className="btn btn-primary"
-            style={{ background: 'linear-gradient(135deg, #1877F2, #0d65d9)' }}
+            style={{ 
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '11px 22px',
+              borderRadius: '11px',
+              fontWeight: 550,
+              fontSize: '14px',
+              cursor: 'pointer',
+              border: 'none',
+              background: 'linear-gradient(135deg, #0081FB 0%, #0064E0 100%)',
+              color: 'white',
+              boxShadow: '0 4px 14px rgba(0, 129, 251, 0.35)',
+              transition: 'all 0.2s'
+            }}
           >
-            {fetchingMeta ? <RefreshCw size={16} className="spin" /> : <Download size={16} />}
+            {fetchingMeta ? (
+              <RefreshCw size={16} className="spin" />
+            ) : (
+              <img 
+                src="https://cdn.brandfetch.io/meta.com/w/512/h/512/icon" 
+                alt="Meta" 
+                style={{ width: '18px', height: '18px', borderRadius: '4px' }} 
+              />
+            )}
             Meta Leads abrufen
           </button>
         </div>
@@ -196,8 +289,82 @@ export default function LeadsPage() {
           gap: '10px',
           color: '#4ade80'
         }}>
-          <span style={{ fontSize: '18px' }}>✓</span>
+          <Check size={18} />
           {importStatus}
+        </div>
+      )}
+
+      {/* Bulk Actions Bar */}
+      {selectedLeads.size > 0 && (
+        <div style={{ 
+          background: 'rgba(139, 92, 246, 0.2)', 
+          border: '1px solid rgba(139, 92, 246, 0.4)',
+          borderRadius: '12px',
+          padding: '14px 20px',
+          marginBottom: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ fontWeight: 500 }}>{selectedLeads.size} Lead{selectedLeads.size > 1 ? 's' : ''} ausgewählt</span>
+            <button 
+              onClick={() => setSelectedLeads(new Set())}
+              className="btn btn-secondary"
+              style={{ padding: '6px 12px', fontSize: '13px' }}
+            >
+              <X size={14} /> Auswahl aufheben
+            </button>
+          </div>
+          <button 
+            onClick={() => setShowBulkAssign(true)}
+            className="btn btn-primary"
+            style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+          >
+            <Users size={16} /> Alle zuweisen
+          </button>
+        </div>
+      )}
+
+      {/* Bulk Assign Modal */}
+      {showBulkAssign && (
+        <div className="modal-overlay" onClick={() => setShowBulkAssign(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
+            <h2 style={{ marginBottom: '20px' }}>{selectedLeads.size} Leads zuweisen</h2>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <label className="label">Broker auswählen</label>
+              <select 
+                value={bulkBrokerId} 
+                onChange={e => setBulkBrokerId(e.target.value)}
+                className="select"
+              >
+                <option value="">-- Broker wählen --</option>
+                {brokers.map(broker => (
+                  <option key={broker.id} value={broker.id}>
+                    {broker.company_name} ({broker.contact_name})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button 
+                onClick={() => setShowBulkAssign(false)}
+                className="btn btn-secondary"
+              >
+                Abbrechen
+              </button>
+              <button 
+                onClick={bulkAssignLeads}
+                disabled={!bulkBrokerId || bulkAssigning}
+                className="btn btn-primary"
+              >
+                {bulkAssigning ? <RefreshCw size={16} className="spin" /> : <Check size={16} />}
+                Zuweisen
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -246,7 +413,7 @@ export default function LeadsPage() {
           <div style={{ display: 'flex', gap: '8px' }}>
             <button
               onClick={() => handleSort('created_at')}
-              className={`btn btn-secondary`}
+              className="btn btn-secondary"
               style={{ 
                 padding: '10px 14px',
                 background: sortBy === 'created_at' ? 'rgba(139, 92, 246, 0.3)' : undefined
@@ -256,7 +423,7 @@ export default function LeadsPage() {
             </button>
             <button
               onClick={() => handleSort('lead_number')}
-              className={`btn btn-secondary`}
+              className="btn btn-secondary"
               style={{ 
                 padding: '10px 14px',
                 background: sortBy === 'lead_number' ? 'rgba(139, 92, 246, 0.3)' : undefined
@@ -266,7 +433,7 @@ export default function LeadsPage() {
             </button>
             <button
               onClick={() => handleSort('name')}
-              className={`btn btn-secondary`}
+              className="btn btn-secondary"
               style={{ 
                 padding: '10px 14px',
                 background: sortBy === 'name' ? 'rgba(139, 92, 246, 0.3)' : undefined
@@ -304,63 +471,90 @@ export default function LeadsPage() {
             <table>
               <thead>
                 <tr>
-                  <th style={{ width: '80px' }}>ID</th>
+                  <th style={{ width: '50px', textAlign: 'center' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={selectedLeads.size === filtered.length && filtered.length > 0}
+                      onChange={toggleSelectAll}
+                      style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                    />
+                  </th>
+                  <th style={{ width: '70px' }}>ID</th>
                   <th>NAME</th>
                   <th>KONTAKT</th>
                   <th>KATEGORIE</th>
-                  <th style={{ width: '120px' }}>STATUS</th>
-                  <th style={{ width: '120px' }}></th>
+                  <th style={{ width: '150px' }}>ERSTELLT</th>
+                  <th style={{ width: '110px' }}>STATUS</th>
+                  <th style={{ width: '110px' }}></th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((lead, index) => (
-                  <tr 
-                    key={lead.id} 
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => window.location.href = `/leads/${lead.id}`}
-                  >
-                    <td style={{ color: 'rgba(255,255,255,0.6)' }}>
-                      #{lead.lead_number || (leads.length - index)}
-                    </td>
-                    <td>
-                      <Link 
-                        href={`/leads/${lead.id}`} 
-                        style={{ 
-                          color: 'white', 
-                          fontWeight: 500, 
-                          textDecoration: 'none',
-                          fontSize: '15px'
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {lead.first_name} {lead.last_name}
-                      </Link>
-                    </td>
-                    <td>
-                      <div style={{ color: 'white' }}>{lead.email}</div>
-                      <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', marginTop: '2px' }}>
-                        {lead.phone}
-                      </div>
-                    </td>
-                    <td style={{ color: 'white' }}>
-                      {lead.category?.name || '-'}
-                    </td>
-                    <td>
-                      {getStatusBadge(lead.status)}
-                    </td>
-                    <td onClick={(e) => e.stopPropagation()}>
-                      {lead.status === 'new' && (
+                {filtered.map((lead) => {
+                  const dt = formatDateTime(lead.created_at)
+                  return (
+                    <tr 
+                      key={lead.id} 
+                      style={{ 
+                        cursor: 'pointer',
+                        background: selectedLeads.has(lead.id) ? 'rgba(139, 92, 246, 0.15)' : undefined
+                      }}
+                      onClick={() => window.location.href = `/leads/${lead.id}`}
+                    >
+                      <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                        <input 
+                          type="checkbox" 
+                          checked={selectedLeads.has(lead.id)}
+                          onChange={() => toggleSelectLead(lead.id)}
+                          style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                        />
+                      </td>
+                      <td style={{ color: 'rgba(255,255,255,0.6)' }}>
+                        #{lead.lead_number}
+                      </td>
+                      <td>
                         <Link 
-                          href={`/leads/${lead.id}`}
-                          className="btn btn-primary"
-                          style={{ padding: '6px 16px', fontSize: '13px' }}
+                          href={`/leads/${lead.id}`} 
+                          style={{ 
+                            color: 'white', 
+                            fontWeight: 500, 
+                            textDecoration: 'none',
+                            fontSize: '15px'
+                          }}
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          Zuweisen
+                          {lead.first_name} {lead.last_name}
                         </Link>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td>
+                        <div style={{ color: 'white' }}>{lead.email}</div>
+                        <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', marginTop: '2px' }}>
+                          {lead.phone}
+                        </div>
+                      </td>
+                      <td style={{ color: 'white' }}>
+                        {lead.category?.name || '-'}
+                      </td>
+                      <td>
+                        <div style={{ color: 'white', fontSize: '14px' }}>{dt.date}</div>
+                        <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', marginTop: '2px' }}>{dt.time}</div>
+                      </td>
+                      <td>
+                        {getStatusBadge(lead.status)}
+                      </td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        {lead.status === 'new' && (
+                          <Link 
+                            href={`/leads/${lead.id}`}
+                            className="btn btn-primary"
+                            style={{ padding: '6px 14px', fontSize: '13px' }}
+                          >
+                            Zuweisen
+                          </Link>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
