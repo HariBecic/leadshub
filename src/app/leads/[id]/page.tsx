@@ -23,7 +23,7 @@ export default function LeadDetailPage() {
   async function loadData() {
     const { data: leadData } = await supabase
       .from('leads')
-      .select('*, category:lead_categories(id, name, default_price), source:lead_sources(name)')
+      .select('*, category:lead_categories(id, name, default_price)')
       .eq('id', params.id)
       .single()
     
@@ -153,6 +153,27 @@ export default function LeadDetailPage() {
     // Check if data is nested in extra_data.extra_data
     const data = lead.extra_data.extra_data || lead.extra_data
     return data
+  }
+
+  // Format label nicely
+  function formatLabel(key: string): string {
+    const labels: Record<string, string> = {
+      fahrzeugmarke: 'Fahrzeugmarke',
+      baujahr: 'Baujahr',
+      fahrzeugtyp: 'Fahrzeugtyp',
+      type: 'Typ',
+      situation: 'Situation',
+      kanton: 'Kanton',
+      source: 'Quelle',
+      timestamp: 'Zeitpunkt',
+      aktuelle_kasse: 'Aktuelle Kasse',
+      gewaehlte_kasse: 'Gewählte Kasse',
+      gewaehlte_praemie: 'Prämie',
+      franchise: 'Franchise',
+      geburtsdatum: 'Geburtsdatum',
+      geschlecht: 'Geschlecht'
+    }
+    return labels[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
   }
 
   function renderKeyValue(key: string, value: any) {
@@ -333,7 +354,7 @@ export default function LeadDetailPage() {
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px' }}>
                 <span style={{ opacity: 0.7 }}>Quelle</span>
-                <span style={{ fontWeight: 500 }}>{lead.source?.name || '-'}</span>
+                <span style={{ fontWeight: 500 }}>{lead.source || '-'}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px' }}>
                 <span style={{ opacity: 0.7 }}>Zuweisungen</span>
@@ -345,44 +366,32 @@ export default function LeadDetailPage() {
       </div>
 
       {/* Extra Data */}
-      {extraData && (
+      {extraData && Object.keys(extraData).length > 0 && (
         <div className="card" style={{ marginBottom: '24px' }}>
           <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '20px' }}>Zusätzliche Informationen</h2>
           
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
-            {/* Main Info */}
+            {/* General Extra Fields */}
             <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '12px', padding: '16px' }}>
               <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: '#a5b4fc' }}>Anfrage-Details</h3>
-              {renderKeyValue('type', extraData.type)}
-              {renderKeyValue('situation', extraData.situation)}
-              {renderKeyValue('kanton', extraData.kanton)}
-              {renderKeyValue('source', extraData.source)}
-              {renderKeyValue('timestamp', extraData.timestamp)}
+              {Object.entries(extraData).map(([key, value]) => {
+                // Skip nested objects and internal meta fields
+                if (typeof value === 'object' || key === 'persons' || key.startsWith('meta_')) return null
+                return renderKeyValue(key, value as string)
+              })}
             </div>
 
-            {/* Insurance Details */}
-            {(extraData.aktuelle_kasse || extraData.gewaehlte_kasse || extraData.gewaehlte_praemie) && (
+            {/* Meta Info (if present) */}
+            {(extraData.meta_leadgen_id || extraData.meta_form_id) && (
               <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '12px', padding: '16px' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: '#86efac' }}>Versicherung</h3>
-                {renderKeyValue('aktuelle_kasse', extraData.aktuelle_kasse)}
-                {renderKeyValue('gewaehlte_kasse', extraData.gewaehlte_kasse)}
-                {renderKeyValue('gewaehlte_praemie', extraData.gewaehlte_praemie)}
-                {renderKeyValue('franchise', extraData.franchise)}
+                <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: '#86efac' }}>Meta Ads Info</h3>
+                {extraData.meta_leadgen_id && renderKeyValue('Lead ID', extraData.meta_leadgen_id)}
+                {extraData.meta_form_id && renderKeyValue('Formular ID', extraData.meta_form_id)}
+                {extraData.meta_created_time && renderKeyValue('Erstellt', extraData.meta_created_time)}
               </div>
             )}
 
-            {/* Add-ons */}
-            {(extraData.zusatz_zahn || extraData.zusatz_spital || extraData.zusatz_komplementaer || extraData.zusatz_freie_arztwahl) && (
-              <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '12px', padding: '16px' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: '#fde047' }}>Zusatzversicherungen</h3>
-                {renderKeyValue('zusatz_zahn', extraData.zusatz_zahn)}
-                {renderKeyValue('zusatz_spital', extraData.zusatz_spital)}
-                {renderKeyValue('zusatz_komplementaer', extraData.zusatz_komplementaer)}
-                {renderKeyValue('zusatz_freie_arztwahl', extraData.zusatz_freie_arztwahl)}
-              </div>
-            )}
-
-            {/* Persons */}
+            {/* Persons (for health insurance) */}
             {persons.length > 0 && (
               <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '12px', padding: '16px' }}>
                 <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: '#c4b5fd' }}>Versicherte Personen</h3>
@@ -390,36 +399,12 @@ export default function LeadDetailPage() {
                   <div key={index} style={{ marginBottom: index < persons.length - 1 ? '16px' : 0, paddingBottom: index < persons.length - 1 ? '16px' : 0, borderBottom: index < persons.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none' }}>
                     <div style={{ fontWeight: 600, marginBottom: '8px' }}>{person.name || `Person ${index + 1}`}</div>
                     <div style={{ display: 'grid', gap: '6px', fontSize: '13px' }}>
-                      {person.geburtsdatum && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ opacity: 0.6 }}>Geburtsdatum</span>
-                          <span>{person.geburtsdatum}</span>
+                      {Object.entries(person).filter(([k]) => k !== 'name').map(([key, value]) => (
+                        <div key={key} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ opacity: 0.6 }}>{formatLabel(key)}</span>
+                          <span>{String(value)}</span>
                         </div>
-                      )}
-                      {person.geschlecht && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ opacity: 0.6 }}>Geschlecht</span>
-                          <span style={{ textTransform: 'capitalize' }}>{person.geschlecht}</span>
-                        </div>
-                      )}
-                      {person.franchise && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ opacity: 0.6 }}>Franchise</span>
-                          <span>CHF {person.franchise}</span>
-                        </div>
-                      )}
-                      {person.unfall && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ opacity: 0.6 }}>Unfall inkl.</span>
-                          <span>{person.unfall === 'ja' ? '✓ Ja' : '✗ Nein'}</span>
-                        </div>
-                      )}
-                      {person.neu_schweiz && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ opacity: 0.6 }}>Neu in CH</span>
-                          <span>{person.neu_schweiz === 'ja' ? '✓ Ja' : '✗ Nein'}</span>
-                        </div>
-                      )}
+                      ))}
                     </div>
                   </div>
                 ))}
@@ -427,8 +412,6 @@ export default function LeadDetailPage() {
             )}
           </div>
         </div>
-      )}
-
       {/* Assign Modal */}
       {showAssignModal && (
         <div className="modal-overlay" onClick={() => setShowAssignModal(false)}>
