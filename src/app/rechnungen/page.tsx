@@ -68,13 +68,23 @@ export default function RechnungenPage() {
   }
 
   async function markAsPaid(invoiceId: string) {
-    await supabase
-      .from('invoices')
-      .update({ status: 'paid', paid_at: new Date().toISOString() })
-      .eq('id', invoiceId)
+    const res = await fetch('/api/invoices/pay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ invoice_id: invoiceId })
+    })
     
-    // TODO: If fixpreis invoice, send leads now
-    loadData()
+    const data = await res.json()
+    if (data.success) {
+      if (data.leads_delivered > 0) {
+        alert(`Rechnung als bezahlt markiert. ${data.leads_delivered} Lead(s) wurden zugestellt.`)
+      } else {
+        alert('Rechnung als bezahlt markiert.')
+      }
+      loadData()
+    } else {
+      alert('Fehler: ' + (data.error || 'Unbekannt'))
+    }
   }
 
   async function sendInvoice(invoiceId: string) {
