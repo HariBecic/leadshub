@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
     
     <!-- Logo -->
     <div style="text-align:center;margin-bottom:32px;">
-      <span style="font-size:28px;font-weight:700;color:white;">leads<span style="color:#f97316;">hub</span><span style="color:#a5b4fc;">°</span></span>
+      <img src="https://leadshub2.vercel.app/logo.png" alt="LeadsHub" style="height:48px;width:auto;" />
     </div>
     
     <!-- Main Card -->
