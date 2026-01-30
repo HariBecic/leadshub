@@ -47,34 +47,39 @@ export default function PaketePage() {
   async function createPackage(e: React.FormEvent) {
     e.preventDefault()
     
-    const { error } = await supabase.from('lead_packages').insert({
-      name: formData.name,
-      broker_id: formData.broker_id,
-      category_id: formData.category_id || null,
-      total_leads: formData.total_leads,
-      delivered_leads: 0,
-      price: formData.price,
-      distribution_type: formData.distribution_type,
-      leads_per_day: formData.distribution_type === 'distributed' ? formData.leads_per_day : null,
-      status: 'active'
-    })
+    try {
+      const res = await fetch('/api/packages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      })
+      
+      const data = await res.json()
+      
+      if (!res.ok) {
+        alert('Fehler: ' + (data.error || 'Unbekannter Fehler'))
+        return
+      }
+      
+      if (data.assigned_leads > 0) {
+        alert(`Paket erstellt! ${data.assigned_leads} Leads wurden zugewiesen.${data.email_sent ? ' E-Mail wurde gesendet.' : ''}`)
+      }
 
-    if (error) {
-      alert('Fehler: ' + error.message)
-      return
+      setShowModal(false)
+      setFormData({
+        name: '',
+        broker_id: '',
+        category_id: '',
+        total_leads: 10,
+        price: 500,
+        distribution_type: 'instant',
+        leads_per_day: 2
+      })
+      loadData()
+    } catch (err) {
+      console.error('Error:', err)
+      alert('Netzwerkfehler')
     }
-
-    setShowModal(false)
-    setFormData({
-      name: '',
-      broker_id: '',
-      category_id: '',
-      total_leads: 10,
-      price: 500,
-      distribution_type: 'instant',
-      leads_per_day: 2
-    })
-    loadData()
   }
 
   if (loading) {
