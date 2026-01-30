@@ -282,6 +282,7 @@ export default function LeadsPage() {
                 <th>Name</th>
                 <th>Kontakt</th>
                 <th>Kategorie</th>
+                <th>Erstellt</th>
                 <th>Status</th>
                 <th></th>
               </tr>
@@ -317,6 +318,10 @@ export default function LeadsPage() {
                   </td>
                   <td>
                     {lead.category && <span className="badge badge-info">{lead.category.name}</span>}
+                  </td>
+                  <td style={{ fontSize: '13px', opacity: 0.8 }}>
+                    <div>{new Date(lead.created_at).toLocaleDateString('de-CH')}</div>
+                    <div style={{ opacity: 0.7 }}>{new Date(lead.created_at).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}</div>
                   </td>
                   <td>
                     <span className={`badge ${lead.status === 'new' ? 'badge-success' : lead.status === 'assigned' ? 'badge-warning' : 'badge-neutral'}`}>
