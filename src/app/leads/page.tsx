@@ -353,11 +353,20 @@ export default function LeadsPage() {
                 <select 
                   value={bulkBrokerId} 
                   onChange={e => setBulkBrokerId(e.target.value)}
-                  className="select"
+                  style={{
+                    width: '100%',
+                    padding: '13px 18px',
+                    borderRadius: '11px',
+                    border: '1px solid rgba(255, 255, 255, 0.18)',
+                    background: '#1e1b4b',
+                    color: 'white',
+                    fontSize: '15px',
+                    outline: 'none'
+                  }}
                 >
-                  <option value="">-- Broker wählen --</option>
+                  <option value="" style={{ background: '#1e1b4b', color: 'white' }}>-- Broker wählen --</option>
                   {brokers.map(broker => (
-                    <option key={broker.id} value={broker.id}>
+                    <option key={broker.id} value={broker.id} style={{ background: '#1e1b4b', color: 'white' }}>
                       {broker.company_name} {broker.contact_name ? `(${broker.contact_name})` : ''} {broker.status !== 'active' ? `[${broker.status}]` : ''}
                     </option>
                   ))}
