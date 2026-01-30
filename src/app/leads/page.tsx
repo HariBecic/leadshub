@@ -28,8 +28,9 @@ interface LeadCategory {
 
 interface Broker {
   id: string
-  company_name: string
-  contact_name: string
+  name: string
+  contact_person: string
+  email: string
   status: string
 }
 
@@ -393,7 +394,7 @@ export default function LeadsPage() {
                   >
                     <span>
                       {selectedBroker 
-                        ? `${selectedBroker.company_name}${selectedBroker.contact_name ? ` (${selectedBroker.contact_name})` : ''}`
+                        ? `${selectedBroker.name}${selectedBroker.contact_person ? ` (${selectedBroker.contact_person})` : ''}`
                         : '-- Broker wählen --'
                       }
                     </span>
@@ -432,10 +433,10 @@ export default function LeadsPage() {
                           onMouseEnter={e => e.currentTarget.style.background = 'rgba(139, 92, 246, 0.2)'}
                           onMouseLeave={e => e.currentTarget.style.background = bulkBrokerId === broker.id ? 'rgba(139, 92, 246, 0.3)' : 'transparent'}
                         >
-                          <div style={{ fontWeight: 500 }}>{broker.company_name}</div>
-                          {broker.contact_name && (
+                          <div style={{ fontWeight: 500 }}>{broker.name}</div>
+                          {broker.contact_person && (
                             <div style={{ fontSize: '13px', opacity: 0.6, marginTop: '2px' }}>
-                              {broker.contact_name}
+                              {broker.contact_person}
                             </div>
                           )}
                         </div>
