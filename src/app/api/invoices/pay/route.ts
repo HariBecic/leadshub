@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
+import { 
+  leadDeliveryEmail, 
+  subscriptionDeliveryEmail,
+  emailTemplate,
+  greeting,
+  paragraph,
+  spacer,
+  highlightBox,
+  signature
+} from '@/lib/email-template'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
@@ -59,27 +69,16 @@ export async function POST(request: NextRequest) {
         } else {
           // For distributed, send confirmation
           if (invoice.broker?.email) {
-            const emailHtml = `
-              <div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;">
-                <div style="background:linear-gradient(135deg,#1e1b4b 0%,#312e81 100%);color:white;padding:32px;text-align:center;border-radius:16px 16px 0 0;">
-                  <h1 style="margin:0;font-size:24px;">✅ Zahlung erhalten</h1>
-                </div>
-                <div style="padding:32px;background:#ffffff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 16px 16px;">
-                  <p style="font-size:16px;color:#1e293b;">Hallo ${invoice.broker.contact_person || invoice.broker.name},</p>
-                  <p style="color:#64748b;line-height:1.6;">
-                    Vielen Dank! Ihre Zahlung für "${pkg.name}" ist eingegangen.
-                  </p>
-                  <p style="color:#64748b;line-height:1.6;">
-                    Sie erhalten ab sofort täglich ${pkg.leads_per_day} Leads per E-Mail, bis alle ${pkg.total_leads} Leads geliefert sind.
-                  </p>
-                  <hr style="border:none;border-top:1px solid #e2e8f0;margin:32px 0;">
-                  <p style="color:#64748b;font-size:14px;margin:0;">
-                    Freundliche Grüsse<br>
-                    <strong style="color:#1e293b;">LeadsHub</strong>
-                  </p>
-                </div>
-              </div>
+            const content = `
+              ${greeting(invoice.broker.contact_person || invoice.broker.name)}
+              ${paragraph(`Vielen Dank! Ihre Zahlung für "<strong>${pkg.name}</strong>" ist eingegangen.`)}
+              ${paragraph(`Sie erhalten ab sofort täglich <strong>${pkg.leads_per_day} Leads</strong> per E-Mail, bis alle <strong>${pkg.total_leads} Leads</strong> geliefert sind.`)}
+              ${spacer(20)}
+              ${highlightBox(`<strong>Start:</strong> Die erste Lieferung erfolgt morgen um 09:00 Uhr.`, 'success')}
+              ${signature()}
             `
+            const emailHtml = emailTemplate(content, '✅ Zahlung erhalten')
+
             try {
               await resend.emails.send({
                 from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
@@ -124,34 +123,16 @@ export async function POST(request: NextRequest) {
           const lead = assignment.lead
           const categoryName = lead.category?.name || 'Lead'
           
-          const emailHtml = `
-            <div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;">
-              <div style="background:linear-gradient(135deg,#1e1b4b 0%,#312e81 100%);color:white;padding:32px;text-align:center;border-radius:16px 16px 0 0;">
-                <h1 style="margin:0;font-size:24px;">🎯 Ihr Lead ist da!</h1>
-              </div>
-              <div style="padding:32px;background:#ffffff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 16px 16px;">
-                <p style="font-size:16px;color:#1e293b;">Hallo ${invoice.broker.contact_person || invoice.broker.name},</p>
-                <p style="color:#64748b;line-height:1.6;">
-                  Vielen Dank für Ihre Zahlung! Hier sind die Kontaktdaten Ihres ${categoryName}-Leads:
-                </p>
-                
-                <div style="background:#f8fafc;border-radius:12px;padding:24px;margin:24px 0;">
-                  <table style="width:100%;font-size:14px;">
-                    <tr><td style="color:#64748b;padding:8px 0;">Name:</td><td style="color:#1e293b;font-weight:600;">${lead.first_name} ${lead.last_name}</td></tr>
-                    ${lead.email ? `<tr><td style="color:#64748b;padding:8px 0;">E-Mail:</td><td style="color:#1e293b;"><a href="mailto:${lead.email}">${lead.email}</a></td></tr>` : ''}
-                    ${lead.phone ? `<tr><td style="color:#64748b;padding:8px 0;">Telefon:</td><td style="color:#1e293b;"><a href="tel:${lead.phone}">${lead.phone}</a></td></tr>` : ''}
-                    ${lead.plz || lead.ort ? `<tr><td style="color:#64748b;padding:8px 0;">Standort:</td><td style="color:#1e293b;">${lead.plz || ''} ${lead.ort || ''}</td></tr>` : ''}
-                  </table>
-                </div>
-                
-                <hr style="border:none;border-top:1px solid #e2e8f0;margin:32px 0;">
-                <p style="color:#64748b;font-size:14px;margin:0;">
-                  Freundliche Grüsse<br>
-                  <strong style="color:#1e293b;">LeadsHub</strong>
-                </p>
-              </div>
-            </div>
-          `
+          const emailHtml = leadDeliveryEmail({
+            brokerName: invoice.broker.contact_person || invoice.broker.name,
+            category: categoryName,
+            leadName: `${lead.first_name} ${lead.last_name}`,
+            leadEmail: lead.email || '',
+            leadPhone: lead.phone || '',
+            leadPlz: lead.plz || '',
+            leadOrt: lead.ort || '',
+            extraData: lead.extra_data
+          })
 
           try {
             await resend.emails.send({
@@ -232,66 +213,22 @@ async function deliverPackageLeads(pkg: any, broker: any) {
     })
     .eq('id', pkg.id)
 
-  // Send email
+  // Send email with new template
   let emailSent = false
   if (broker?.email && leads.length > 0) {
-    const leadRows = leads.map(lead => `
-      <tr>
-        <td style="padding:12px;border-bottom:1px solid #e2e8f0;font-weight:500;">${lead.first_name} ${lead.last_name}</td>
-        <td style="padding:12px;border-bottom:1px solid #e2e8f0;">${lead.email || '-'}</td>
-        <td style="padding:12px;border-bottom:1px solid #e2e8f0;">${lead.phone || '-'}</td>
-        <td style="padding:12px;border-bottom:1px solid #e2e8f0;">${lead.plz || ''} ${lead.ort || ''}</td>
-        <td style="padding:12px;border-bottom:1px solid #e2e8f0;">${lead.category?.name || '-'}</td>
-      </tr>
-    `).join('')
-
-    const emailHtml = `
-      <div style="font-family:system-ui,sans-serif;max-width:700px;margin:0 auto;">
-        <div style="background:linear-gradient(135deg,#1e1b4b 0%,#312e81 100%);color:white;padding:32px;text-align:center;border-radius:16px 16px 0 0;">
-          <h1 style="margin:0;font-size:24px;">📦 Ihre Leads sind da!</h1>
-          <p style="margin:8px 0 0;opacity:0.9;">${pkg.name}</p>
-        </div>
-        <div style="padding:32px;background:#ffffff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 16px 16px;">
-          <p style="font-size:16px;color:#1e293b;">Hallo ${broker.contact_person || broker.name},</p>
-          <p style="color:#64748b;line-height:1.6;">
-            ${leads.length === pkg.total_leads 
-              ? `Alle ${leads.length} Leads aus Ihrem Paket sind jetzt verfügbar:` 
-              : `${leads.length} von ${pkg.total_leads} Leads wurden geliefert. Die restlichen folgen sobald verfügbar:`}
-          </p>
-          
-          <div style="overflow-x:auto;margin:24px 0;">
-            <table style="width:100%;border-collapse:collapse;font-size:14px;">
-              <thead>
-                <tr style="background:#f8fafc;">
-                  <th style="padding:12px;text-align:left;border-bottom:2px solid #e2e8f0;">Name</th>
-                  <th style="padding:12px;text-align:left;border-bottom:2px solid #e2e8f0;">E-Mail</th>
-                  <th style="padding:12px;text-align:left;border-bottom:2px solid #e2e8f0;">Telefon</th>
-                  <th style="padding:12px;text-align:left;border-bottom:2px solid #e2e8f0;">Standort</th>
-                  <th style="padding:12px;text-align:left;border-bottom:2px solid #e2e8f0;">Kategorie</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${leadRows}
-              </tbody>
-            </table>
-          </div>
-
-          <div style="background:#d1fae5;border-radius:8px;padding:16px;margin:24px 0;">
-            <div style="color:#065f46;font-size:14px;">
-              <strong>Status:</strong> ${newDelivered} von ${pkg.total_leads} Leads geliefert
-              ${newDelivered >= pkg.total_leads ? ' ✅ Paket vollständig!' : ''}
-            </div>
-          </div>
-          
-          <hr style="border:none;border-top:1px solid #e2e8f0;margin:32px 0;">
-          
-          <p style="color:#64748b;font-size:14px;margin:0;">
-            Freundliche Grüsse<br>
-            <strong style="color:#1e293b;">LeadsHub</strong>
-          </p>
-        </div>
-      </div>
-    `
+    const emailHtml = subscriptionDeliveryEmail({
+      brokerName: broker.contact_person || broker.name,
+      packageName: pkg.name,
+      leadsCount: leads.length,
+      leads: leads.map(lead => ({
+        name: `${lead.first_name} ${lead.last_name}`,
+        email: lead.email || '',
+        phone: lead.phone || '',
+        plz: lead.plz || '',
+        ort: lead.ort || '',
+        extraData: lead.extra_data
+      }))
+    })
 
     try {
       await resend.emails.send({

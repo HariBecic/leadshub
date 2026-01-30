@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
+import { subscriptionDeliveryEmail } from '@/lib/email-template'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
@@ -10,51 +11,25 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 async function sendLeadsEmail(broker: any, leads: any[], packageName: string) {
   if (!broker.email) return false
 
-  const leadsHtml = leads.map(lead => `
-    <div style="background:#f8fafc;border-radius:10px;padding:16px;margin-bottom:12px;">
-      <div style="font-weight:600;font-size:16px;color:#1e293b;margin-bottom:8px;">${lead.first_name} ${lead.last_name}</div>
-      <table style="font-size:14px;width:100%;">
-        ${lead.email ? `<tr><td style="color:#64748b;width:80px;">E-Mail:</td><td style="color:#1e293b;">${lead.email}</td></tr>` : ''}
-        ${lead.phone ? `<tr><td style="color:#64748b;">Telefon:</td><td style="color:#1e293b;">${lead.phone}</td></tr>` : ''}
-        ${lead.plz ? `<tr><td style="color:#64748b;">PLZ/Ort:</td><td style="color:#1e293b;">${lead.plz} ${lead.ort || ''}</td></tr>` : ''}
-      </table>
-    </div>
-  `).join('')
-
-  const emailHtml = `
-    <div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;">
-      <div style="background:linear-gradient(135deg,#22c55e 0%,#16a34a 100%);color:white;padding:32px;text-align:center;border-radius:16px 16px 0 0;">
-        <h1 style="margin:0;font-size:24px;">🎉 ${leads.length} neue Leads!</h1>
-      </div>
-      <div style="padding:32px;background:#ffffff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 16px 16px;">
-        <p style="font-size:16px;color:#1e293b;">Hallo ${broker.contact_person || broker.name},</p>
-        <p style="color:#64748b;line-height:1.6;">
-          Hier sind Ihre neuen Leads aus dem Paket <strong>"${packageName}"</strong>:
-        </p>
-        
-        <div style="margin:24px 0;">
-          ${leadsHtml}
-        </div>
-        
-        <p style="color:#64748b;line-height:1.6;">
-          Bitte kontaktieren Sie die Leads so schnell wie möglich für beste Erfolgsaussichten.
-        </p>
-        
-        <hr style="border:none;border-top:1px solid #e2e8f0;margin:32px 0;">
-        
-        <p style="color:#64748b;font-size:14px;margin:0;">
-          Freundliche Grüsse<br>
-          <strong style="color:#1e293b;">LeadsHub</strong>
-        </p>
-      </div>
-    </div>
-  `
+  const emailHtml = subscriptionDeliveryEmail({
+    brokerName: broker.contact_person || broker.name,
+    packageName: packageName,
+    leadsCount: leads.length,
+    leads: leads.map(lead => ({
+      name: `${lead.first_name} ${lead.last_name}`,
+      email: lead.email || '',
+      phone: lead.phone || '',
+      plz: lead.plz || '',
+      ort: lead.ort || '',
+      extraData: lead.extra_data
+    }))
+  })
 
   try {
     await resend.emails.send({
       from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
       to: broker.email,
-      subject: `${leads.length} neue Leads - ${packageName}`,
+      subject: `📦 ${leads.length} neue Leads - ${packageName}`,
       html: emailHtml
     })
     return true
@@ -97,7 +72,7 @@ export async function POST(request: NextRequest) {
   // Find available leads
   let query = supabase
     .from('leads')
-    .select('*')
+    .select('*, category:lead_categories(name)')
     .in('status', ['new', 'available'])
     .order('created_at', { ascending: true })
     .limit(toDeliver)
@@ -209,7 +184,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('leads')
-      .select('*')
+      .select('*, category:lead_categories(name)')
       .in('status', ['new', 'available'])
       .order('created_at', { ascending: true })
       .limit(toDeliver)
