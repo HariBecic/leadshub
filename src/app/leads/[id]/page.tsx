@@ -3,7 +3,21 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { ArrowLeft, Mail, Phone, MapPin, Calendar, Users, Trash2, UserPlus } from 'lucide-react'
+import { ArrowLeft, Mail, Phone, MapPin, Trash2, UserPlus } from 'lucide-react'
+
+interface ExtraData {
+  lead?: Record<string, string>
+  details?: Record<string, string>
+  zusatz?: Record<string, string>
+  persons?: Array<{
+    name?: string
+    geburtsdatum?: string
+    geschlecht?: string
+    franchise?: string
+  }>
+  source?: string
+  timestamp?: string
+}
 
 export default function LeadDetailPage() {
   const params = useParams()
@@ -75,6 +89,26 @@ export default function LeadDetailPage() {
     router.push('/leads')
   }
 
+  function renderExtraDataSection(data: Record<string, string> | undefined, title: string, color: string) {
+    if (!data) return null
+    const entries = Object.entries(data).filter(([, value]) => value)
+    if (entries.length === 0) return null
+    
+    return (
+      <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '12px', padding: '16px' }}>
+        <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color }}>{title}</h3>
+        <div style={{ display: 'grid', gap: '8px' }}>
+          {entries.map(([key, value]) => (
+            <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+              <span style={{ opacity: 0.6, textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</span>
+              <span style={{ fontWeight: 500 }}>{String(value)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   if (loading) {
     return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}><div className="spinner"></div></div>
   }
@@ -82,6 +116,8 @@ export default function LeadDetailPage() {
   if (!lead) {
     return <div className="card">Lead nicht gefunden</div>
   }
+
+  const extraData: ExtraData = lead.extra_data || {}
 
   return (
     <div>
@@ -178,11 +214,6 @@ export default function LeadDetailPage() {
                   <span>{a.pricing_model === 'commission' ? `${a.revenue_share_percent}% Beteiligung` : 'Fixpreis'}</span>
                   <span>{new Date(a.created_at).toLocaleDateString('de-CH')}</span>
                 </div>
-                {a.followup_response && (
-                  <div style={{ marginTop: '8px', fontSize: '13px' }}>
-                    <span className="badge badge-neutral">{a.followup_response}</span>
-                  </div>
-                )}
               </div>
             ))
           )}
@@ -232,63 +263,16 @@ export default function LeadDetailPage() {
           <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '20px' }}>Zusätzliche Informationen</h2>
           
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-            {/* Lead Info */}
-            {lead.extra_data.lead && (
-              <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '12px', padding: '16px' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: '#a5b4fc' }}>Lead-Daten</h3>
-                <div style={{ display: 'grid', gap: '8px' }}>
-                  {Object.entries(lead.extra_data.lead as Record<string, string>).map(([key, value]) => (
-                    value ? (
-                      <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-                        <span style={{ opacity: 0.6, textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</span>
-                        <span style={{ fontWeight: 500 }}>{String(value)}</span>
-                      </div>
-                    ) : null
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Details */}
-            {lead.extra_data.details && Object.values(lead.extra_data.details as Record<string, string>).some(v => v) && (
-              <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '12px', padding: '16px' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: '#86efac' }}>Versicherungs-Details</h3>
-                <div style={{ display: 'grid', gap: '8px' }}>
-                  {Object.entries(lead.extra_data.details as Record<string, string>).map(([key, value]) => (
-                    value ? (
-                      <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-                        <span style={{ opacity: 0.6, textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</span>
-                        <span style={{ fontWeight: 500 }}>{String(value)}</span>
-                      </div>
-                    ) : null
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Zusatz (Add-ons) */}
-            {lead.extra_data.zusatz && Object.values(lead.extra_data.zusatz as Record<string, string>).some(v => v) && (
-              <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '12px', padding: '16px' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: '#fde047' }}>Zusatzversicherungen</h3>
-                <div style={{ display: 'grid', gap: '8px' }}>
-                  {Object.entries(lead.extra_data.zusatz as Record<string, string>).map(([key, value]) => (
-                    value ? (
-                      <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
-                        <span style={{ opacity: 0.6, textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</span>
-                        <span style={{ fontWeight: 500 }}>{String(value)}</span>
-                      </div>
-                    ) : null
-                  ))}
-                </div>
-              </div>
-            )}
+            {renderExtraDataSection(extraData.lead, 'Lead-Daten', '#a5b4fc')}
+            {renderExtraDataSection(extraData.details, 'Versicherungs-Details', '#86efac')}
+            {renderExtraDataSection(extraData.zusatz, 'Zusatzversicherungen', '#fde047')}
 
             {/* Persons */}
-            {lead.extra_data.persons && (lead.extra_data.persons as any[]).length > 0 && (
+            {extraData.persons && extraData.persons.length > 0 && (
               <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '12px', padding: '16px' }}>
                 <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: '#c4b5fd' }}>Versicherte Personen</h3>
-                {(lead.extra_data.persons as any[]).map((person: any, index: number) => (
-                  <div key={index} style={{ marginBottom: index < (lead.extra_data.persons as any[]).length - 1 ? '16px' : 0, paddingBottom: index < (lead.extra_data.persons as any[]).length - 1 ? '16px' : 0, borderBottom: index < (lead.extra_data.persons as any[]).length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none' }}>
+                {extraData.persons.map((person, index) => (
+                  <div key={index} style={{ marginBottom: index < extraData.persons!.length - 1 ? '16px' : 0, paddingBottom: index < extraData.persons!.length - 1 ? '16px' : 0, borderBottom: index < extraData.persons!.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none' }}>
                     <div style={{ fontWeight: 600, marginBottom: '8px' }}>{person.name || `Person ${index + 1}`}</div>
                     <div style={{ display: 'grid', gap: '4px', fontSize: '13px' }}>
                       {person.geburtsdatum && (
@@ -318,8 +302,8 @@ export default function LeadDetailPage() {
 
           {/* Source & Timestamp */}
           <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: '24px', fontSize: '13px', opacity: 0.6 }}>
-            {lead.extra_data.source && <span>Quelle: {lead.extra_data.source}</span>}
-            {lead.extra_data.timestamp && <span>Erfasst: {new Date(lead.extra_data.timestamp).toLocaleString('de-CH')}</span>}
+            {extraData.source && <span>Quelle: {extraData.source}</span>}
+            {extraData.timestamp && <span>Erfasst: {new Date(extraData.timestamp).toLocaleString('de-CH')}</span>}
           </div>
         </div>
       )}
