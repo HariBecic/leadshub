@@ -12,24 +12,40 @@ export async function GET(
   try {
     const { id: invoiceId } = await params
 
-    // Get invoice with broker and package
-    const { data: invoice, error } = await supabase
+    // Get invoice
+    const { data: invoice, error: invError } = await supabase
       .from('invoices')
-      .select('*, broker:brokers(*), package:lead_packages(*)')
+      .select('*')
       .eq('id', invoiceId)
       .single()
 
-    if (error || !invoice) {
-      return NextResponse.json({ error: 'Rechnung nicht gefunden' }, { status: 404 })
+    if (invError || !invoice) {
+      return NextResponse.json({ error: 'Rechnung nicht gefunden', details: invError?.message }, { status: 404 })
     }
 
-    const broker = invoice.broker
-    const pkg = invoice.package
+    // Get broker separately
+    const { data: broker } = await supabase
+      .from('brokers')
+      .select('*')
+      .eq('id', invoice.broker_id)
+      .single()
+
+    // Get package if exists
+    let pkg = null
+    if (invoice.package_id) {
+      const { data: pkgData } = await supabase
+        .from('lead_packages')
+        .select('*')
+        .eq('id', invoice.package_id)
+        .single()
+      pkg = pkgData
+    }
+
     const invoiceDate = new Date(invoice.created_at).toLocaleDateString('de-CH')
     const dueDate = invoice.due_date ? new Date(invoice.due_date).toLocaleDateString('de-CH') : '-'
     
     // Determine description
-    let description = 'Lead-Dienstleistung'
+    let description = invoice.description || 'Lead-Dienstleistung'
     let quantity = 1
     let unitPrice = Number(invoice.amount)
     
@@ -39,59 +55,63 @@ export async function GET(
       unitPrice = Number(invoice.amount) / pkg.total_leads
     }
 
-    // Generate PDF using HTML to PDF approach
     const html = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
+  <title>Rechnung ${invoice.invoice_number}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { 
       font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; 
-      font-size: 10pt;
+      font-size: 11pt;
       color: #1e293b;
-      padding: 40px;
-      max-width: 210mm;
+      padding: 50px;
+      max-width: 800px;
       margin: 0 auto;
+      background: white;
     }
     
     .header {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      margin-bottom: 40px;
-      padding-bottom: 20px;
-      border-bottom: 2px solid #e2e8f0;
+      margin-bottom: 50px;
+      padding-bottom: 25px;
+      border-bottom: 3px solid #6366f1;
     }
     
     .logo {
-      font-size: 24pt;
-      font-weight: 700;
-      color: #1e1b4b;
-    }
-    .logo span.hub { color: #f97316; }
-    .logo span.dot { color: #6366f1; }
-    
-    .company-info {
-      text-align: right;
-      font-size: 9pt;
-      color: #64748b;
-      line-height: 1.6;
-    }
-    
-    .invoice-title {
       font-size: 28pt;
       font-weight: 700;
       color: #1e1b4b;
-      margin-bottom: 8px;
+    }
+    .logo .hub { color: #f97316; }
+    .logo .dot { color: #6366f1; }
+    
+    .company-info {
+      text-align: right;
+      font-size: 10pt;
+      color: #64748b;
+      line-height: 1.7;
+    }
+    
+    .invoice-header {
+      margin-bottom: 40px;
+    }
+    
+    .invoice-title {
+      font-size: 32pt;
+      font-weight: 700;
+      color: #1e1b4b;
+      margin-bottom: 5px;
     }
     
     .invoice-number {
-      font-size: 12pt;
+      font-size: 14pt;
       color: #6366f1;
       font-weight: 600;
-      margin-bottom: 30px;
     }
     
     .addresses {
@@ -100,49 +120,51 @@ export async function GET(
       margin-bottom: 40px;
     }
     
-    .address-block {
-      width: 45%;
-    }
+    .address-block { width: 48%; }
     
     .address-label {
-      font-size: 8pt;
+      font-size: 9pt;
       text-transform: uppercase;
-      letter-spacing: 1px;
+      letter-spacing: 1.5px;
       color: #94a3b8;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
+      font-weight: 600;
     }
     
     .address-content {
-      font-size: 10pt;
-      line-height: 1.6;
+      font-size: 11pt;
+      line-height: 1.7;
     }
     
     .address-content strong {
-      font-size: 11pt;
+      font-size: 12pt;
       color: #1e1b4b;
+      display: block;
+      margin-bottom: 5px;
     }
     
-    .meta-table {
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
       margin-bottom: 40px;
+      background: #f8fafc;
+      padding: 20px;
+      border-radius: 8px;
     }
     
-    .meta-table table {
-      width: 100%;
-      border-collapse: collapse;
+    .meta-item label {
+      font-size: 9pt;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #94a3b8;
+      display: block;
+      margin-bottom: 5px;
     }
     
-    .meta-table td {
-      padding: 12px 16px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    
-    .meta-table td:first-child {
-      color: #64748b;
-      width: 150px;
-    }
-    
-    .meta-table td:last-child {
-      font-weight: 500;
+    .meta-item span {
+      font-weight: 600;
+      color: #1e293b;
     }
     
     .items-table {
@@ -152,15 +174,14 @@ export async function GET(
     }
     
     .items-table th {
-      background: #f8fafc;
-      padding: 14px 16px;
+      background: #1e1b4b;
+      color: white;
+      padding: 15px 20px;
       text-align: left;
       font-weight: 600;
-      font-size: 9pt;
+      font-size: 10pt;
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      color: #64748b;
-      border-bottom: 2px solid #e2e8f0;
     }
     
     .items-table th:last-child,
@@ -169,26 +190,22 @@ export async function GET(
     }
     
     .items-table td {
-      padding: 16px;
+      padding: 20px;
       border-bottom: 1px solid #e2e8f0;
-    }
-    
-    .items-table .item-name {
-      font-weight: 500;
+      font-size: 11pt;
     }
     
     .totals {
       margin-left: auto;
-      width: 280px;
+      width: 300px;
+      margin-bottom: 40px;
     }
     
-    .totals table {
-      width: 100%;
-      border-collapse: collapse;
-    }
+    .totals table { width: 100%; }
     
     .totals td {
-      padding: 10px 0;
+      padding: 12px 0;
+      font-size: 11pt;
     }
     
     .totals td:last-child {
@@ -197,42 +214,44 @@ export async function GET(
     }
     
     .totals .total-row {
-      border-top: 2px solid #1e1b4b;
-      font-size: 14pt;
-      font-weight: 700;
+      border-top: 3px solid #1e1b4b;
     }
     
     .totals .total-row td {
-      padding-top: 16px;
+      padding-top: 15px;
+      font-size: 16pt;
+      font-weight: 700;
       color: #1e1b4b;
     }
     
-    .payment-info {
-      background: #f8fafc;
-      border-radius: 8px;
-      padding: 24px;
+    .payment-box {
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+      color: white;
+      border-radius: 12px;
+      padding: 30px;
       margin-top: 40px;
     }
     
-    .payment-info h3 {
-      font-size: 11pt;
+    .payment-box h3 {
+      font-size: 14pt;
+      margin-bottom: 20px;
       font-weight: 600;
-      color: #1e1b4b;
-      margin-bottom: 16px;
     }
     
-    .payment-info table {
-      width: 100%;
+    .payment-box table { width: 100%; }
+    
+    .payment-box td {
+      padding: 8px 0;
+      font-size: 11pt;
     }
     
-    .payment-info td {
-      padding: 6px 0;
-      font-size: 10pt;
-    }
-    
-    .payment-info td:first-child {
-      color: #64748b;
+    .payment-box td:first-child {
+      opacity: 0.8;
       width: 120px;
+    }
+    
+    .payment-box td:last-child {
+      font-weight: 500;
     }
     
     .footer {
@@ -240,38 +259,35 @@ export async function GET(
       padding-top: 20px;
       border-top: 1px solid #e2e8f0;
       text-align: center;
-      font-size: 8pt;
+      font-size: 9pt;
       color: #94a3b8;
     }
     
-    .status-badge {
+    .status {
       display: inline-block;
-      padding: 4px 12px;
+      padding: 6px 16px;
       border-radius: 20px;
-      font-size: 9pt;
+      font-size: 10pt;
       font-weight: 600;
       text-transform: uppercase;
     }
     
-    .status-pending {
-      background: #fef3c7;
-      color: #92400e;
-    }
+    .status-pending { background: #fef3c7; color: #92400e; }
+    .status-paid { background: #d1fae5; color: #065f46; }
+    .status-sent { background: #dbeafe; color: #1e40af; }
     
-    .status-paid {
-      background: #d1fae5;
-      color: #065f46;
+    @media print {
+      body { padding: 20px; }
+      .payment-box { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
   </style>
 </head>
 <body>
   
   <div class="header">
-    <div>
-      <div class="logo">leads<span class="hub">hub</span><span class="dot">°</span></div>
-    </div>
+    <div class="logo">leads<span class="hub">hub</span><span class="dot">°</span></div>
     <div class="company-info">
-      LeadsHub<br>
+      <strong>LeadsHub</strong><br>
       Sandäckerstrasse 10<br>
       8957 Spreitenbach<br>
       Schweiz<br>
@@ -279,41 +295,41 @@ export async function GET(
     </div>
   </div>
   
-  <div class="invoice-title">RECHNUNG</div>
-  <div class="invoice-number">${invoice.invoice_number}</div>
+  <div class="invoice-header">
+    <div class="invoice-title">RECHNUNG</div>
+    <div class="invoice-number">${invoice.invoice_number}</div>
+  </div>
   
   <div class="addresses">
     <div class="address-block">
-      <div class="address-label">Rechnungsadresse</div>
+      <div class="address-label">Rechnungsempfänger</div>
       <div class="address-content">
-        <strong>${broker?.name || '-'}</strong><br>
+        <strong>${broker?.name || '-'}</strong>
         ${broker?.contact_person ? broker.contact_person + '<br>' : ''}
         ${broker?.email || ''}<br>
         ${broker?.phone || ''}
       </div>
     </div>
     <div class="address-block" style="text-align: right;">
-      <span class="status-badge ${invoice.status === 'paid' ? 'status-paid' : 'status-pending'}">
-        ${invoice.status === 'paid' ? 'Bezahlt' : 'Offen'}
+      <span class="status status-${invoice.status}">
+        ${invoice.status === 'paid' ? 'Bezahlt' : invoice.status === 'sent' ? 'Gesendet' : 'Offen'}
       </span>
     </div>
   </div>
   
-  <div class="meta-table">
-    <table>
-      <tr>
-        <td>Rechnungsdatum</td>
-        <td>${invoiceDate}</td>
-      </tr>
-      <tr>
-        <td>Fällig bis</td>
-        <td>${dueDate}</td>
-      </tr>
-      <tr>
-        <td>Zahlungsart</td>
-        <td>Überweisung</td>
-      </tr>
-    </table>
+  <div class="meta-grid">
+    <div class="meta-item">
+      <label>Rechnungsdatum</label>
+      <span>${invoiceDate}</span>
+    </div>
+    <div class="meta-item">
+      <label>Fällig bis</label>
+      <span>${dueDate}</span>
+    </div>
+    <div class="meta-item">
+      <label>Rechnungsnr.</label>
+      <span>${invoice.invoice_number}</span>
+    </div>
   </div>
   
   <table class="items-table">
@@ -327,7 +343,7 @@ export async function GET(
     </thead>
     <tbody>
       <tr>
-        <td class="item-name">${description}</td>
+        <td>${description}</td>
         <td>${quantity}</td>
         <td>CHF ${unitPrice.toFixed(2)}</td>
         <td>CHF ${Number(invoice.amount).toFixed(2)}</td>
@@ -352,8 +368,8 @@ export async function GET(
     </table>
   </div>
   
-  <div class="payment-info">
-    <h3>Zahlungsinformationen</h3>
+  <div class="payment-box">
+    <h3>💳 Zahlungsinformationen</h3>
     <table>
       <tr>
         <td>Bank</td>
@@ -382,8 +398,6 @@ export async function GET(
 </html>
     `
 
-    // Return HTML for now - browser can print as PDF
-    // For real PDF generation, we'd need puppeteer or similar
     return new NextResponse(html, {
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
