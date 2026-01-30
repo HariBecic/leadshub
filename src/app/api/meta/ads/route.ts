@@ -90,65 +90,55 @@ export async function GET(request: NextRequest) {
         }
       } catch (e) {}
 
+      // Get ADS (not creatives) - each ad is unique
       if (includeCreatives) {
         try {
-          // Get adcreatives directly with all image fields
-          const creativesResponse = await fetch(
-            `https://graph.facebook.com/v18.0/act_${accountId}/adcreatives?fields=id,name,thumbnail_url,image_url,object_story_spec,effective_object_story_id&limit=50&access_token=${META_ACCESS_TOKEN}`
-          )
-          const creativesData = await creativesResponse.json()
-          
-          // Get ads to match creatives with insights
           const adsResponse = await fetch(
-            `https://graph.facebook.com/v18.0/act_${accountId}/ads?fields=id,name,creative{id},insights.date_preset(${datePreset}){spend,impressions,clicks}&limit=100&access_token=${META_ACCESS_TOKEN}`
+            `https://graph.facebook.com/v18.0/act_${accountId}/ads?fields=id,name,status,creative{id,name,thumbnail_url,object_story_spec}&insights.date_preset(${datePreset}){spend,impressions,clicks}&limit=50&access_token=${META_ACCESS_TOKEN}`
           )
           const adsData = await adsResponse.json()
           
-          // Build insights map by creative ID
-          const insightsMap: Record<string, any> = {}
-          for (const ad of adsData.data || []) {
-            if (ad.creative?.id && ad.insights?.data?.[0]) {
-              const creativeId = ad.creative.id
-              if (!insightsMap[creativeId]) {
-                insightsMap[creativeId] = { spend: 0, impressions: 0, clicks: 0, adName: ad.name }
-              }
-              insightsMap[creativeId].spend += parseFloat(ad.insights.data[0].spend || 0)
-              insightsMap[creativeId].impressions += parseInt(ad.insights.data[0].impressions || 0)
-              insightsMap[creativeId].clicks += parseInt(ad.insights.data[0].clicks || 0)
-            }
-          }
+          // Track seen creative IDs to avoid duplicates
+          const seenCreativeIds = new Set<string>()
           
-          for (const creative of creativesData.data || []) {
+          for (const ad of adsData.data || []) {
+            const creativeId = ad.creative?.id
+            
+            // Skip if we already have this creative
+            if (creativeId && seenCreativeIds.has(creativeId)) {
+              continue
+            }
+            if (creativeId) {
+              seenCreativeIds.add(creativeId)
+            }
+            
             let imageUrl = null
             
-            // Try to get image from object_story_spec
-            if (creative.object_story_spec?.link_data?.picture) {
-              imageUrl = creative.object_story_spec.link_data.picture
-            } else if (creative.object_story_spec?.link_data?.image_url) {
-              imageUrl = creative.object_story_spec.link_data.image_url
-            } else if (creative.object_story_spec?.photo_data?.url) {
-              imageUrl = creative.object_story_spec.photo_data.url
-            } else if (creative.object_story_spec?.video_data?.image_url) {
-              imageUrl = creative.object_story_spec.video_data.image_url
-            } else if (creative.image_url) {
-              imageUrl = creative.image_url
+            // Get image from object_story_spec
+            if (ad.creative?.object_story_spec?.link_data?.picture) {
+              imageUrl = ad.creative.object_story_spec.link_data.picture
+            } else if (ad.creative?.object_story_spec?.link_data?.image_url) {
+              imageUrl = ad.creative.object_story_spec.link_data.image_url
+            } else if (ad.creative?.object_story_spec?.photo_data?.url) {
+              imageUrl = ad.creative.object_story_spec.photo_data.url
+            } else if (ad.creative?.object_story_spec?.video_data?.image_url) {
+              imageUrl = ad.creative.object_story_spec.video_data.image_url
             }
             
-            // Get insights for this creative
-            const insights = insightsMap[creative.id] || { spend: 0, impressions: 0, clicks: 0 }
+            const insights = ad.insights?.data?.[0] || {}
             
             allCreatives.push({
-              id: creative.id,
-              name: insights.adName || creative.name || 'Unnamed Creative',
+              id: ad.id,
+              name: ad.name || ad.creative?.name || 'Unnamed Ad',
               image_url: imageUrl,
-              thumbnail_url: creative.thumbnail_url,
-              spend: insights.spend,
-              impressions: insights.impressions,
-              clicks: insights.clicks
+              thumbnail_url: ad.creative?.thumbnail_url,
+              spend: parseFloat(insights.spend || 0),
+              impressions: parseInt(insights.impressions || 0),
+              clicks: parseInt(insights.clicks || 0)
             })
           }
         } catch (e) {
-          console.error('Error fetching creatives:', e)
+          console.error('Error fetching ads:', e)
         }
       }
 
@@ -160,6 +150,7 @@ export async function GET(request: NextRequest) {
       })
     }
 
+    // Sort by spend (highest first)
     allCreatives.sort((a, b) => b.spend - a.spend)
 
     return NextResponse.json({ 
