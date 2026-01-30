@@ -38,63 +38,117 @@ export async function POST(request: NextRequest) {
       package: 'Lead-Paket'
     }
 
+    const formattedDate = new Date(invoice.created_at).toLocaleDateString('de-CH')
+    const formattedDueDate = invoice.due_date ? new Date(invoice.due_date).toLocaleDateString('de-CH') : '30 Tage'
+
     const emailHtml = `
-      <div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;">
-        <div style="background:linear-gradient(135deg,#1e1b4b 0%,#312e81 100%);color:white;padding:32px;text-align:center;border-radius:16px 16px 0 0;">
-          <h1 style="margin:0;font-size:24px;">📄 Rechnung ${invoice.invoice_number}</h1>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;font-family:system-ui,-apple-system,sans-serif;background:linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#1e1b4b 100%);min-height:100vh;">
+  <div style="max-width:600px;margin:0 auto;padding:40px 20px;">
+    
+    <!-- Logo -->
+    <div style="text-align:center;margin-bottom:32px;">
+      <img src="https://leadshub2.vercel.app/logo.png" alt="LeadsHub" style="height:48px;width:auto;" />
+    </div>
+    
+    <!-- Main Card -->
+    <div style="background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);border-radius:24px;border:1px solid rgba(255,255,255,0.2);overflow:hidden;">
+      
+      <!-- Header -->
+      <div style="background:rgba(255,255,255,0.05);padding:32px;text-align:center;border-bottom:1px solid rgba(255,255,255,0.1);">
+        <div style="font-size:48px;margin-bottom:16px;">📄</div>
+        <h1 style="margin:0;font-size:24px;font-weight:700;color:white;">Rechnung ${invoice.invoice_number}</h1>
+        <p style="margin:8px 0 0;color:rgba(255,255,255,0.7);">${typeLabels[invoice.type] || invoice.type}</p>
+      </div>
+      
+      <!-- Content -->
+      <div style="padding:32px;">
+        <p style="color:rgba(255,255,255,0.9);font-size:16px;line-height:1.6;margin:0 0 24px;">
+          Hallo ${invoice.broker.contact_person || invoice.broker.name},<br><br>
+          Anbei erhalten Sie Ihre Rechnung.
+        </p>
+        
+        <!-- Invoice Details Card -->
+        <div style="background:rgba(255,255,255,0.08);border-radius:16px;padding:24px;margin-bottom:24px;">
+          <table style="width:100%;border-collapse:collapse;">
+            <tr>
+              <td style="padding:12px 0;color:rgba(255,255,255,0.6);font-size:14px;">Rechnungsnr.</td>
+              <td style="padding:12px 0;color:white;font-weight:600;text-align:right;">${invoice.invoice_number}</td>
+            </tr>
+            <tr>
+              <td style="padding:12px 0;color:rgba(255,255,255,0.6);font-size:14px;border-top:1px solid rgba(255,255,255,0.1);">Datum</td>
+              <td style="padding:12px 0;color:white;text-align:right;border-top:1px solid rgba(255,255,255,0.1);">${formattedDate}</td>
+            </tr>
+            <tr>
+              <td style="padding:12px 0;color:rgba(255,255,255,0.6);font-size:14px;border-top:1px solid rgba(255,255,255,0.1);">Fällig bis</td>
+              <td style="padding:12px 0;color:white;text-align:right;border-top:1px solid rgba(255,255,255,0.1);">${formattedDueDate}</td>
+            </tr>
+          </table>
         </div>
-        <div style="padding:32px;background:#ffffff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 16px 16px;">
-          <p style="font-size:16px;color:#1e293b;">Hallo ${invoice.broker.contact_person || invoice.broker.name},</p>
-          <p style="color:#64748b;line-height:1.6;">
-            Anbei erhalten Sie Ihre Rechnung:
-          </p>
-          
-          <div style="background:#f8fafc;border-radius:12px;padding:24px;margin:24px 0;">
-            <table style="width:100%;font-size:14px;">
-              <tr>
-                <td style="color:#64748b;padding:8px 0;">Rechnungsnr.:</td>
-                <td style="color:#1e293b;font-weight:600;">${invoice.invoice_number}</td>
-              </tr>
-              <tr>
-                <td style="color:#64748b;padding:8px 0;">Typ:</td>
-                <td style="color:#1e293b;">${typeLabels[invoice.type] || invoice.type}</td>
-              </tr>
-              <tr>
-                <td style="color:#64748b;padding:8px 0;">Betrag:</td>
-                <td style="color:#1e293b;font-weight:700;font-size:20px;">CHF ${Number(invoice.amount).toFixed(2)}</td>
-              </tr>
-              <tr>
-                <td style="color:#64748b;padding:8px 0;">Fällig bis:</td>
-                <td style="color:#1e293b;">${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString('de-CH') : '30 Tage'}</td>
-              </tr>
-            </table>
-          </div>
-
-          ${invoice.description ? `
-          <div style="background:#f8fafc;border-radius:8px;padding:16px;margin:24px 0;">
-            <div style="color:#64748b;font-size:13px;margin-bottom:4px;">Beschreibung:</div>
-            <div style="color:#1e293b;">${invoice.description}</div>
-          </div>
-          ` : ''}
-
-          <div style="background:#dbeafe;border-radius:8px;padding:16px;margin:24px 0;">
-            <div style="color:#1e40af;font-size:14px;">
-              <strong>Zahlungsdetails:</strong><br>
-              IBAN: CH00 0000 0000 0000 0000 0<br>
-              Empfänger: LeadsHub GmbH<br>
-              Referenz: ${invoice.invoice_number}
-            </div>
-          </div>
-          
-          <hr style="border:none;border-top:1px solid #e2e8f0;margin:32px 0;">
-          
-          <p style="color:#64748b;font-size:14px;margin:0;">
-            Freundliche Grüsse<br>
-            <strong style="color:#1e293b;">LeadsHub</strong><br>
-            <span style="font-size:12px;">Sandäckerstrasse 10, 8957 Spreitenbach</span>
-          </p>
+        
+        <!-- Amount Box -->
+        <div style="background:linear-gradient(135deg,rgba(249,115,22,0.3) 0%,rgba(234,88,12,0.2) 100%);border-radius:16px;padding:32px;text-align:center;margin-bottom:24px;border:1px solid rgba(249,115,22,0.3);">
+          <div style="color:rgba(255,255,255,0.7);font-size:14px;margin-bottom:8px;">Zu zahlen</div>
+          <div style="color:white;font-size:42px;font-weight:700;">CHF ${Number(invoice.amount).toFixed(2)}</div>
+        </div>
+        
+        ${invoice.description ? `
+        <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:16px;margin-bottom:24px;">
+          <div style="color:rgba(255,255,255,0.5);font-size:12px;margin-bottom:4px;">Beschreibung</div>
+          <div style="color:white;">${invoice.description}</div>
+        </div>
+        ` : ''}
+        
+        <!-- Payment Details -->
+        <div style="background:rgba(99,102,241,0.2);border-radius:16px;padding:24px;margin-bottom:24px;border:1px solid rgba(99,102,241,0.3);">
+          <div style="color:#a5b4fc;font-weight:600;margin-bottom:12px;">💳 Zahlungsdetails</div>
+          <table style="width:100%;">
+            <tr>
+              <td style="color:rgba(255,255,255,0.6);padding:4px 0;font-size:14px;">IBAN:</td>
+              <td style="color:white;padding:4px 0;font-size:14px;">CH93 0076 2011 6238 5295 7</td>
+            </tr>
+            <tr>
+              <td style="color:rgba(255,255,255,0.6);padding:4px 0;font-size:14px;">Bank:</td>
+              <td style="color:white;padding:4px 0;font-size:14px;">Raiffeisenbank</td>
+            </tr>
+            <tr>
+              <td style="color:rgba(255,255,255,0.6);padding:4px 0;font-size:14px;">Empfänger:</td>
+              <td style="color:white;padding:4px 0;font-size:14px;">LeadsHub, 8957 Spreitenbach</td>
+            </tr>
+            <tr>
+              <td style="color:rgba(255,255,255,0.6);padding:4px 0;font-size:14px;">Referenz:</td>
+              <td style="color:white;padding:4px 0;font-size:14px;font-weight:600;">${invoice.invoice_number}</td>
+            </tr>
+          </table>
         </div>
       </div>
+      
+      <!-- Footer -->
+      <div style="background:rgba(0,0,0,0.2);padding:24px 32px;border-top:1px solid rgba(255,255,255,0.1);">
+        <p style="margin:0;color:rgba(255,255,255,0.6);font-size:14px;">
+          Freundliche Grüsse<br>
+          <strong style="color:white;">LeadsHub</strong><br>
+          <span style="font-size:12px;">Sandäckerstrasse 10, 8957 Spreitenbach</span>
+        </p>
+      </div>
+      
+    </div>
+    
+    <!-- Footer Links -->
+    <div style="text-align:center;margin-top:24px;">
+      <p style="color:rgba(255,255,255,0.5);font-size:12px;margin:0;">
+        © 2026 LeadsHub. Alle Rechte vorbehalten.
+      </p>
+    </div>
+    
+  </div>
+</body>
+</html>
     `
 
     await resend.emails.send({
