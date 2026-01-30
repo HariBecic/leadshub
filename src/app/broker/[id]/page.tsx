@@ -87,6 +87,11 @@ export default function BrokerDetailPage() {
 
   async function activateContract(contractId: string) {
     await supabase.from('contracts').update({ status: 'active' }).eq('id', contractId)
+    // Auto-activate broker when contract is activated
+    if (!broker.is_active) {
+      await supabase.from('brokers').update({ is_active: true }).eq('id', params.id)
+      setBroker({ ...broker, is_active: true })
+    }
     loadData()
   }
 
