@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { Plus, Search, RefreshCw, Download, Zap, Check, X, Users } from 'lucide-react'
+import { Plus, Search, RefreshCw, Download, Zap, Check, X, Users, ChevronDown } from 'lucide-react'
 
 interface Lead {
   id: string
@@ -52,23 +52,25 @@ export default function LeadsPage() {
   const [showBulkAssign, setShowBulkAssign] = useState(false)
   const [bulkBrokerId, setBulkBrokerId] = useState('')
   const [bulkAssigning, setBulkAssigning] = useState(false)
+  
+  // Custom dropdown
+  const [brokerDropdownOpen, setBrokerDropdownOpen] = useState(false)
 
   useEffect(() => { loadData() }, [])
 
   async function loadData() {
     setLoading(true)
     try {
-      // Load all data
       const [leadsRes, categoriesRes, brokersRes] = await Promise.all([
         supabase.from('leads').select('*, category:lead_categories(id, name)').order('created_at', { ascending: false }),
         supabase.from('lead_categories').select('*'),
-        supabase.from('brokers').select('*') // Get ALL brokers, filter later
+        supabase.from('brokers').select('*')
       ])
       
       if (leadsRes.data) setLeads(leadsRes.data)
       if (categoriesRes.data) setCategories(categoriesRes.data)
       if (brokersRes.data) {
-        console.log('Loaded brokers:', brokersRes.data) // Debug
+        console.log('Loaded brokers:', brokersRes.data)
         setBrokers(brokersRes.data)
       }
     } catch (error) {
@@ -114,16 +116,23 @@ export default function LeadsPage() {
     try {
       const leadIds = Array.from(selectedLeads)
       
-      // Create assignments for each lead
+      // Use the same API as lead detail page
       for (const leadId of leadIds) {
-        await supabase.from('lead_assignments').insert({
-          lead_id: leadId,
-          broker_id: bulkBrokerId,
-          status: 'pending'
+        const res = await fetch('/api/leads/assign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lead_id: leadId,
+            broker_id: bulkBrokerId,
+            pricing_model: 'single',
+            price_charged: 0
+          })
         })
         
-        // Update lead status
-        await supabase.from('leads').update({ status: 'assigned' }).eq('id', leadId)
+        if (!res.ok) {
+          const data = await res.json()
+          console.error('Assignment error:', data)
+        }
       }
       
       setImportStatus(`${leadIds.length} Leads zugewiesen`)
@@ -199,8 +208,7 @@ export default function LeadsPage() {
       return sortDir === 'asc' ? comparison : -comparison
     })
 
-  // Filter active brokers for assignment
-  const activeBrokers = brokers.filter(b => b.status === 'active' || b.status === 'aktiv' || !b.status)
+  const selectedBroker = brokers.find(b => b.id === bulkBrokerId)
 
   const statusOptions = [
     { value: '', label: 'Alle Status' },
@@ -302,11 +310,11 @@ export default function LeadsPage() {
         </div>
       )}
 
-      {/* Bulk Actions Bar */}
+      {/* Selection Bar */}
       {selectedLeads.size > 0 && (
         <div style={{ 
-          background: 'rgba(139, 92, 246, 0.2)', 
-          border: '1px solid rgba(139, 92, 246, 0.4)',
+          background: 'rgba(139, 92, 246, 0.15)', 
+          border: '1px solid rgba(139, 92, 246, 0.3)',
           borderRadius: '12px',
           padding: '14px 20px',
           marginBottom: '20px',
@@ -315,33 +323,46 @@ export default function LeadsPage() {
           justifyContent: 'space-between'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span style={{ fontWeight: 500 }}>{selectedLeads.size} Lead{selectedLeads.size > 1 ? 's' : ''} ausgewählt</span>
+            <Users size={18} style={{ color: '#a78bfa' }} />
+            <span style={{ color: 'white', fontWeight: 500 }}>{selectedLeads.size} Leads ausgewählt</span>
+          </div>
+          <div style={{ display: 'flex', gap: '12px' }}>
             <button 
               onClick={() => setSelectedLeads(new Set())}
               className="btn btn-secondary"
-              style={{ padding: '6px 12px', fontSize: '13px' }}
+              style={{ padding: '8px 16px' }}
             >
-              <X size={14} /> Auswahl aufheben
+              <X size={16} /> Auswahl aufheben
+            </button>
+            <button 
+              onClick={() => setShowBulkAssign(true)}
+              className="btn btn-primary"
+              style={{ padding: '8px 16px' }}
+            >
+              <Users size={16} /> Alle zuweisen
             </button>
           </div>
-          <button 
-            onClick={() => setShowBulkAssign(true)}
-            className="btn btn-primary"
-            style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-          >
-            <Users size={16} /> Alle zuweisen
-          </button>
         </div>
       )}
 
       {/* Bulk Assign Modal */}
       {showBulkAssign && (
-        <div className="modal-overlay" onClick={() => setShowBulkAssign(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
-            <h2 style={{ marginBottom: '20px' }}>{selectedLeads.size} Leads zuweisen</h2>
+        <div 
+          className="modal-overlay" 
+          onClick={() => { setShowBulkAssign(false); setBrokerDropdownOpen(false) }}
+        >
+          <div 
+            className="modal" 
+            onClick={e => e.stopPropagation()} 
+            style={{ maxWidth: '450px' }}
+          >
+            <h2 style={{ marginBottom: '20px', color: 'white' }}>{selectedLeads.size} Leads zuweisen</h2>
             
             <div style={{ marginBottom: '20px' }}>
-              <label className="label">Broker auswählen</label>
+              <label style={{ display: 'block', marginBottom: '8px', color: 'rgba(255,255,255,0.7)', fontSize: '14px' }}>
+                Broker auswählen
+              </label>
+              
               {brokers.length === 0 ? (
                 <div style={{ padding: '20px', textAlign: 'center', color: 'rgba(255,255,255,0.5)' }}>
                   <p>Keine Broker gefunden.</p>
@@ -350,27 +371,78 @@ export default function LeadsPage() {
                   </Link>
                 </div>
               ) : (
-                <select 
-                  value={bulkBrokerId} 
-                  onChange={e => setBulkBrokerId(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '13px 18px',
-                    borderRadius: '11px',
-                    border: '1px solid rgba(255, 255, 255, 0.18)',
-                    background: '#1e1b4b',
-                    color: 'white',
-                    fontSize: '15px',
-                    outline: 'none'
-                  }}
-                >
-                  <option value="" style={{ background: '#1e1b4b', color: 'white' }}>-- Broker wählen --</option>
-                  {brokers.map(broker => (
-                    <option key={broker.id} value={broker.id} style={{ background: '#1e1b4b', color: 'white' }}>
-                      {broker.company_name} {broker.contact_name ? `(${broker.contact_name})` : ''} {broker.status !== 'active' ? `[${broker.status}]` : ''}
-                    </option>
-                  ))}
-                </select>
+                <div style={{ position: 'relative' }}>
+                  {/* Custom Dropdown Button */}
+                  <button
+                    type="button"
+                    onClick={() => setBrokerDropdownOpen(!brokerDropdownOpen)}
+                    style={{
+                      width: '100%',
+                      padding: '14px 18px',
+                      borderRadius: '11px',
+                      border: '1px solid rgba(255, 255, 255, 0.18)',
+                      background: 'rgba(30, 27, 75, 0.8)',
+                      color: 'white',
+                      fontSize: '15px',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <span>
+                      {selectedBroker 
+                        ? `${selectedBroker.company_name}${selectedBroker.contact_name ? ` (${selectedBroker.contact_name})` : ''}`
+                        : '-- Broker wählen --'
+                      }
+                    </span>
+                    <ChevronDown size={18} style={{ opacity: 0.6 }} />
+                  </button>
+                  
+                  {/* Dropdown List */}
+                  {brokerDropdownOpen && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      marginTop: '4px',
+                      background: '#1e1b4b',
+                      border: '1px solid rgba(255, 255, 255, 0.18)',
+                      borderRadius: '11px',
+                      maxHeight: '200px',
+                      overflowY: 'auto',
+                      zIndex: 100
+                    }}>
+                      {brokers.map(broker => (
+                        <div
+                          key={broker.id}
+                          onClick={() => {
+                            setBulkBrokerId(broker.id)
+                            setBrokerDropdownOpen(false)
+                          }}
+                          style={{
+                            padding: '12px 18px',
+                            cursor: 'pointer',
+                            color: 'white',
+                            background: bulkBrokerId === broker.id ? 'rgba(139, 92, 246, 0.3)' : 'transparent',
+                            borderBottom: '1px solid rgba(255,255,255,0.1)'
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(139, 92, 246, 0.2)'}
+                          onMouseLeave={e => e.currentTarget.style.background = bulkBrokerId === broker.id ? 'rgba(139, 92, 246, 0.3)' : 'transparent'}
+                        >
+                          <div style={{ fontWeight: 500 }}>{broker.company_name}</div>
+                          {broker.contact_name && (
+                            <div style={{ fontSize: '13px', opacity: 0.6, marginTop: '2px' }}>
+                              {broker.contact_name}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
               
               {/* Debug info */}
@@ -381,7 +453,7 @@ export default function LeadsPage() {
 
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <button 
-                onClick={() => setShowBulkAssign(false)}
+                onClick={() => { setShowBulkAssign(false); setBrokerDropdownOpen(false) }}
                 className="btn btn-secondary"
               >
                 Abbrechen
@@ -420,7 +492,7 @@ export default function LeadsPage() {
             value={filterCategory}
             onChange={(e) => setFilterCategory(e.target.value)}
             className="select"
-            style={{ width: '180px' }}
+            style={{ minWidth: '160px' }}
           >
             <option value="">Alle Kategorien</option>
             {categories.map(cat => (
@@ -433,14 +505,14 @@ export default function LeadsPage() {
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
             className="select"
-            style={{ width: '160px' }}
+            style={{ minWidth: '140px' }}
           >
             {statusOptions.map(opt => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
 
-          {/* Sort */}
+          {/* Sort Buttons */}
           <div style={{ display: 'flex', gap: '8px' }}>
             <button
               onClick={() => handleSort('created_at')}
@@ -548,33 +620,31 @@ export default function LeadsPage() {
                           style={{ 
                             color: 'white', 
                             fontWeight: 500, 
-                            textDecoration: 'none',
-                            fontSize: '15px'
+                            fontSize: '15px',
+                            textDecoration: 'none'
                           }}
-                          onClick={(e) => e.stopPropagation()}
+                          onClick={e => e.stopPropagation()}
                         >
                           {lead.first_name} {lead.last_name}
                         </Link>
                       </td>
                       <td>
                         <div style={{ color: 'white' }}>{lead.email}</div>
-                        <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', marginTop: '2px' }}>
-                          {lead.phone}
-                        </div>
+                        <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px' }}>{lead.phone}</div>
                       </td>
-                      <td style={{ color: 'white' }}>
+                      <td style={{ color: 'rgba(255,255,255,0.7)' }}>
                         {lead.category?.name || '-'}
                       </td>
                       <td>
-                        <div style={{ color: 'white', fontSize: '14px' }}>{dt.date}</div>
-                        <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', marginTop: '2px' }}>{dt.time}</div>
+                        <div style={{ color: 'white' }}>{dt.date}</div>
+                        <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px' }}>{dt.time}</div>
                       </td>
                       <td>
                         {getStatusBadge(lead.status)}
                       </td>
-                      <td onClick={(e) => e.stopPropagation()}>
+                      <td onClick={e => e.stopPropagation()}>
                         {lead.status === 'new' && (
-                          <Link 
+                          <Link
                             href={`/leads/${lead.id}`}
                             className="btn btn-primary"
                             style={{ padding: '6px 14px', fontSize: '13px' }}
