@@ -1,402 +1,370 @@
 'use client'
+
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { supabase, Lead, Broker } from '@/lib/supabase'
-import { Plus, Zap, Download, RefreshCw } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { Plus, Search, RefreshCw, Download, Filter, ArrowUpDown, ChevronDown, Zap } from 'lucide-react'
 
-interface Contract {
+interface Lead {
   id: string
-  pricing_model: string
-  price_per_lead: number | null
-  revenue_share_percent: number | null
-  monthly_fee: number | null
+  lead_number: number
+  first_name: string
+  last_name: string
+  email: string
+  phone: string
+  plz: string
+  status: string
+  created_at: string
+  category?: {
+    id: string
+    name: string
+  }
+}
+
+interface LeadCategory {
+  id: string
+  name: string
 }
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([])
-  const [brokers, setBrokers] = useState<Broker[]>([])
+  const [categories, setCategories] = useState<LeadCategory[]>([])
+  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [showModal, setShowModal] = useState(false)
-  const [showAssignModal, setShowAssignModal] = useState(false)
-  const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
+  const [filterCategory, setFilterCategory] = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
+  const [sortBy, setSortBy] = useState<'created_at' | 'lead_number' | 'name'>('created_at')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [showFilters, setShowFilters] = useState(false)
+  const [importStatus, setImportStatus] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [fetchingMeta, setFetchingMeta] = useState(false)
-  const [metaResult, setMetaResult] = useState<any>(null)
 
   useEffect(() => { loadData() }, [])
 
   async function loadData() {
-    const { data: leadsData } = await supabase.from('leads').select('*, category:lead_categories(*)').order('created_at', { ascending: false })
-    setLeads(leadsData || [])
-    const { data: brokersData } = await supabase.from('brokers').select('*').eq('status', 'active')
-    setBrokers(brokersData || [])
-  }
-
-  async function fetchMetaLeads() {
-    setFetchingMeta(true)
-    setMetaResult(null)
+    setLoading(true)
     try {
-      const res = await fetch('/api/meta/leads', { method: 'POST' })
-      const data = await res.json()
-      setMetaResult(data)
-      if (data.imported > 0) {
-        loadData()
-      }
-    } catch (err) {
-      setMetaResult({ error: 'Fehler beim Abrufen' })
+      const [leadsRes, categoriesRes] = await Promise.all([
+        supabase.from('leads').select('*, category:lead_categories(id, name)').order('created_at', { ascending: false }),
+        supabase.from('lead_categories').select('*')
+      ])
+      
+      if (leadsRes.data) setLeads(leadsRes.data)
+      if (categoriesRes.data) setCategories(categoriesRes.data)
+    } catch (error) {
+      console.error('Error loading data:', error)
     }
-    setFetchingMeta(false)
+    setLoading(false)
   }
 
   async function generateTestLeads() {
     setGenerating(true)
-    
-    const firstNames = ['Hans', 'Peter', 'Maria', 'Anna', 'Thomas', 'Sandra', 'Michael', 'Lisa', 'Daniel', 'Julia']
-    const lastNames = ['Müller', 'Meier', 'Schmid', 'Keller', 'Weber', 'Huber', 'Schneider', 'Meyer', 'Steiner', 'Fischer']
-    const cities = [
-      { plz: '8001', ort: 'Zürich' },
-      { plz: '3000', ort: 'Bern' },
-      { plz: '4000', ort: 'Basel' },
-      { plz: '6000', ort: 'Luzern' },
-      { plz: '9000', ort: 'St. Gallen' },
-      { plz: '8400', ort: 'Winterthur' },
-      { plz: '5000', ort: 'Aarau' },
-      { plz: '8957', ort: 'Spreitenbach' },
-    ]
-
-    // Get categories
-    const { data: categories } = await supabase.from('lead_categories').select('id')
-    
-    // Get last lead number
-    const { data: lastLead } = await supabase.from('leads').select('lead_number').order('lead_number', { ascending: false }).limit(1).single()
-    let nextNumber = (lastLead?.lead_number || 0) + 1
-
-    // Generate 10 test leads
-    const newLeads = []
-    for (let i = 0; i < 10; i++) {
-      const firstName = firstNames[Math.floor(Math.random() * firstNames.length)]
-      const lastName = lastNames[Math.floor(Math.random() * lastNames.length)]
-      const city = cities[Math.floor(Math.random() * cities.length)]
-      const categoryId = categories && categories.length > 0 
-        ? categories[Math.floor(Math.random() * categories.length)].id 
-        : null
-
-      newLeads.push({
-        lead_number: nextNumber++,
-        first_name: firstName,
-        last_name: lastName,
-        email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}@test.ch`,
-        phone: `07${Math.floor(Math.random() * 10)}${Math.floor(Math.random() * 10000000).toString().padStart(7, '0')}`,
-        plz: city.plz,
-        ort: city.ort,
-        category_id: categoryId,
-        status: 'new',
-        ownership: 'managed',
-        assignment_count: 0
-      })
+    try {
+      const res = await fetch('/api/leads/generate-test', { method: 'POST' })
+      const data = await res.json()
+      if (data.success) {
+        setImportStatus(`${data.count} Test-Leads erstellt`)
+        loadData()
+        setTimeout(() => setImportStatus(null), 3000)
+      }
+    } catch (error) {
+      console.error('Error generating test leads:', error)
     }
-
-    await supabase.from('leads').insert(newLeads)
     setGenerating(false)
-    loadData()
   }
 
-  const filtered = leads.filter(l => 
-    (l.first_name + ' ' + l.last_name + ' ' + l.email).toLowerCase().includes(search.toLowerCase())
-  )
+  async function fetchMetaLeads() {
+    setFetchingMeta(true)
+    try {
+      const res = await fetch('/api/meta/leads/fetch', { method: 'POST' })
+      const data = await res.json()
+      setImportStatus(`${data.imported || 0} neue Leads importiert (${data.pages || 0} Seiten geprüft)`)
+      loadData()
+      setTimeout(() => setImportStatus(null), 5000)
+    } catch (error) {
+      console.error('Error fetching meta leads:', error)
+    }
+    setFetchingMeta(false)
+  }
+
+  function handleSort(field: 'created_at' | 'lead_number' | 'name') {
+    if (sortBy === field) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortBy(field)
+      setSortDir('desc')
+    }
+  }
+
+  // Filter und Sortieren
+  const filtered = leads
+    .filter(lead => {
+      const matchesSearch = search === '' || 
+        `${lead.first_name} ${lead.last_name}`.toLowerCase().includes(search.toLowerCase()) ||
+        lead.email?.toLowerCase().includes(search.toLowerCase()) ||
+        lead.phone?.includes(search)
+      
+      const matchesCategory = filterCategory === '' || lead.category?.id === filterCategory
+      const matchesStatus = filterStatus === '' || lead.status === filterStatus
+      
+      return matchesSearch && matchesCategory && matchesStatus
+    })
+    .sort((a, b) => {
+      let comparison = 0
+      if (sortBy === 'created_at') {
+        comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      } else if (sortBy === 'lead_number') {
+        comparison = (a.lead_number || 0) - (b.lead_number || 0)
+      } else if (sortBy === 'name') {
+        comparison = `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`)
+      }
+      return sortDir === 'asc' ? comparison : -comparison
+    })
+
+  const statusOptions = [
+    { value: '', label: 'Alle Status' },
+    { value: 'new', label: 'Neu' },
+    { value: 'assigned', label: 'Zugewiesen' },
+    { value: 'contacted', label: 'Kontaktiert' },
+    { value: 'converted', label: 'Konvertiert' },
+    { value: 'lost', label: 'Verloren' }
+  ]
+
+  const getStatusBadge = (status: string) => {
+    const styles: Record<string, { bg: string, color: string, label: string }> = {
+      new: { bg: 'rgba(34, 197, 94, 0.25)', color: '#4ade80', label: 'Neu' },
+      assigned: { bg: 'rgba(59, 130, 246, 0.25)', color: '#60a5fa', label: 'Zugewiesen' },
+      contacted: { bg: 'rgba(251, 191, 36, 0.25)', color: '#fbbf24', label: 'Kontaktiert' },
+      converted: { bg: 'rgba(139, 92, 246, 0.25)', color: '#a78bfa', label: 'Konvertiert' },
+      lost: { bg: 'rgba(239, 68, 68, 0.25)', color: '#f87171', label: 'Verloren' }
+    }
+    const style = styles[status] || styles.new
+    return (
+      <span style={{ 
+        background: style.bg, 
+        color: style.color, 
+        padding: '4px 12px', 
+        borderRadius: '20px', 
+        fontSize: '12px',
+        fontWeight: 500
+      }}>
+        {style.label}
+      </span>
+    )
+  }
 
   return (
     <div>
+      {/* Header */}
       <div className="page-header">
-        <h1 className="page-title">Leads</h1>
+        <h1>Leads</h1>
         <div style={{ display: 'flex', gap: '12px' }}>
-          <button onClick={generateTestLeads} disabled={generating} className="btn btn-secondary">
-            <Zap size={20} />{generating ? 'Generiere...' : '10 Test-Leads'}
+          <button 
+            onClick={generateTestLeads} 
+            disabled={generating}
+            className="btn btn-secondary"
+          >
+            {generating ? <RefreshCw size={16} className="spin" /> : <Zap size={16} />}
+            10 Test-Leads
           </button>
-          <button onClick={() => setShowModal(true)} className="btn btn-primary">
-            <Plus size={20} />Neuer Lead
-          </button>
-          <button onClick={fetchMetaLeads} className="btn btn-primary" disabled={fetchingMeta}>
-            {fetchingMeta ? <RefreshCw size={18} className="spin" /> : <Download size={18} />}
-            {fetchingMeta ? 'Lädt...' : 'Meta Leads abrufen'}
+          <Link href="/leads/new" className="btn btn-primary">
+            <Plus size={16} /> Neuer Lead
+          </Link>
+          <button 
+            onClick={fetchMetaLeads} 
+            disabled={fetchingMeta}
+            className="btn btn-primary"
+            style={{ background: 'linear-gradient(135deg, #1877F2, #0d65d9)' }}
+          >
+            {fetchingMeta ? <RefreshCw size={16} className="spin" /> : <Download size={16} />}
+            Meta Leads abrufen
           </button>
         </div>
       </div>
 
-      {/* Meta Result Message */}
-      {metaResult && (
-        <div className="card" style={{ marginBottom: '24px', padding: '16px 24px', background: metaResult.error ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)' }}>
-          {metaResult.error ? (
-            <span style={{ color: '#fca5a5' }}>❌ {metaResult.error}</span>
-          ) : (
-            <span style={{ color: '#86efac' }}>
-              ✅ {metaResult.imported} neue Leads importiert 
-              {metaResult.pages_checked && ` (${metaResult.pages_checked} Seiten geprüft)`}
-              {metaResult.errors?.length > 0 && ` - ${metaResult.errors.length} Fehler`}
-            </span>
-          )}
+      {/* Import Status */}
+      {importStatus && (
+        <div style={{ 
+          background: 'rgba(34, 197, 94, 0.15)', 
+          border: '1px solid rgba(34, 197, 94, 0.3)',
+          borderRadius: '12px',
+          padding: '14px 20px',
+          marginBottom: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          color: '#4ade80'
+        }}>
+          <span style={{ fontSize: '18px' }}>✓</span>
+          {importStatus}
         </div>
       )}
 
-      <div className="card" style={{ marginBottom: '24px', padding: '16px 24px' }}>
-        <input 
-          type="text" 
-          placeholder="Suche nach Name oder E-Mail..." 
-          value={search} 
-          onChange={(e) => setSearch(e.target.value)}
-          className="input input-search"
-        />
-      </div>
+      {/* Search & Filter Bar */}
+      <div className="card" style={{ marginBottom: '20px', padding: '20px' }}>
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Search */}
+          <div style={{ position: 'relative', flex: '1', minWidth: '250px' }}>
+            <Search size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.4)' }} />
+            <input
+              type="text"
+              placeholder="Suche nach Name, E-Mail oder Telefon..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="input"
+              style={{ paddingLeft: '44px' }}
+            />
+          </div>
 
-      <div className="card">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Name</th>
-              <th>Kontakt</th>
-              <th>Kategorie</th>
-              <th>Status</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((lead) => (
-              <tr key={lead.id}>
-                <td>
-                  <Link href={`/leads/${lead.id}`}>#{lead.lead_number}</Link>
-                </td>
-                <td>
-                  <Link href={`/leads/${lead.id}`} style={{ fontWeight: 500, color: '#1e293b' }}>{lead.first_name} {lead.last_name}</Link>
-                </td>
-                <td style={{ color: '#64748b' }}>
-                  <div>{lead.email}</div>
-                  <div>{lead.phone}</div>
-                </td>
-                <td>
-                  {lead.category && <span className="badge badge-info">{(lead.category as any)?.name}</span>}
-                </td>
-                <td>
-                  <span className={`badge ${lead.status === 'new' ? 'badge-success' : lead.status === 'assigned' ? 'badge-warning' : lead.status === 'available' ? 'badge-info' : 'badge-neutral'}`}>
-                    {lead.status === 'new' ? 'Neu' : lead.status === 'assigned' ? 'Zugewiesen' : lead.status === 'available' ? 'Verfügbar' : lead.status === 'closed' ? 'Geschlossen' : lead.status}
-                  </span>
-                </td>
-                <td>
-                  {(lead.status === 'new' || lead.status === 'available') && (
-                    <button 
-                      onClick={() => { setSelectedLead(lead); setShowAssignModal(true) }}
-                      className="btn btn-accent btn-sm"
-                    >
-                      Zuweisen
-                    </button>
-                  )}
-                </td>
-              </tr>
+          {/* Category Filter */}
+          <select
+            value={filterCategory}
+            onChange={(e) => setFilterCategory(e.target.value)}
+            className="select"
+            style={{ width: '180px' }}
+          >
+            <option value="">Alle Kategorien</option>
+            {categories.map(cat => (
+              <option key={cat.id} value={cat.id}>{cat.name}</option>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </select>
 
-      {showModal && <NewLeadModal onClose={() => setShowModal(false)} onSave={() => { setShowModal(false); loadData() }} />}
-      
-      {showAssignModal && selectedLead && (
-        <AssignModal 
-          lead={selectedLead} 
-          brokers={brokers} 
-          onClose={() => { setShowAssignModal(false); setSelectedLead(null) }} 
-          onSave={() => { setShowAssignModal(false); setSelectedLead(null); loadData() }} 
-        />
-      )}
-    </div>
-  )
-}
+          {/* Status Filter */}
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="select"
+            style={{ width: '160px' }}
+          >
+            {statusOptions.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
 
-function NewLeadModal(props: { onClose: () => void; onSave: () => void }) {
-  const [loading, setLoading] = useState(false)
-  const [form, setForm] = useState({ first_name: '', last_name: '', email: '', phone: '', plz: '', ort: '' })
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true)
-    const { data: lastLead } = await supabase.from('leads').select('lead_number').order('lead_number', { ascending: false }).limit(1).single()
-    const nextNumber = (lastLead?.lead_number || 0) + 1
-    await supabase.from('leads').insert([{ ...form, lead_number: nextNumber, status: 'new', ownership: 'managed', assignment_count: 0 }])
-    setLoading(false)
-    props.onSave()
-  }
-
-  return (
-    <div className="modal-overlay" onClick={props.onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Neuer Lead</h2>
-        <p style={{ color: '#64748b', marginBottom: '24px' }}>Erfasse einen neuen Lead manuell</p>
-        <form onSubmit={handleSubmit}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-            <div><label className="input-label">Vorname</label><input value={form.first_name} onChange={(e) => setForm({...form, first_name: e.target.value})} className="input" required /></div>
-            <div><label className="input-label">Nachname</label><input value={form.last_name} onChange={(e) => setForm({...form, last_name: e.target.value})} className="input" required /></div>
-          </div>
-          <div style={{ marginBottom: '16px' }}><label className="input-label">E-Mail</label><input type="email" value={form.email} onChange={(e) => setForm({...form, email: e.target.value})} className="input" /></div>
-          <div style={{ marginBottom: '16px' }}><label className="input-label">Telefon</label><input value={form.phone} onChange={(e) => setForm({...form, phone: e.target.value})} className="input" /></div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
-            <div><label className="input-label">PLZ</label><input value={form.plz} onChange={(e) => setForm({...form, plz: e.target.value})} className="input" /></div>
-            <div><label className="input-label">Ort</label><input value={form.ort} onChange={(e) => setForm({...form, ort: e.target.value})} className="input" /></div>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-            <button type="button" onClick={props.onClose} className="btn btn-secondary">Abbrechen</button>
-            <button type="submit" disabled={loading} className="btn btn-primary">{loading ? '...' : 'Speichern'}</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
-
-function AssignModal(props: { lead: Lead; brokers: Broker[]; onClose: () => void; onSave: () => void }) {
-  const [loading, setLoading] = useState(false)
-  const [brokerId, setBrokerId] = useState(props.brokers[0]?.id || '')
-  const [price, setPrice] = useState(35)
-  const [contract, setContract] = useState<Contract | null>(null)
-  const [loadingContract, setLoadingContract] = useState(false)
-  const [result, setResult] = useState<{ success?: boolean; email_sent?: boolean; error?: string } | null>(null)
-
-  useEffect(() => {
-    loadContract(brokerId)
-  }, [brokerId])
-
-  async function loadContract(broker_id: string) {
-    if (!broker_id) return
-    setLoadingContract(true)
-    
-    const categoryId = (props.lead as any).category_id
-    
-    let { data: contractData } = await supabase
-      .from('contracts')
-      .select('*')
-      .eq('broker_id', broker_id)
-      .eq('category_id', categoryId)
-      .eq('status', 'active')
-      .single()
-
-    if (!contractData) {
-      const { data: generalContract } = await supabase
-        .from('contracts')
-        .select('*')
-        .eq('broker_id', broker_id)
-        .is('category_id', null)
-        .eq('status', 'active')
-        .single()
-      contractData = generalContract
-    }
-
-    setContract(contractData)
-    setLoadingContract(false)
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true)
-    setResult(null)
-
-    try {
-      const res = await fetch('/api/assign', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          lead_id: props.lead.id, 
-          broker_id: brokerId,
-          price: contract ? undefined : price
-        })
-      })
-      const data = await res.json()
-      
-      if (data.success) {
-        setResult({ success: true, email_sent: data.email_sent })
-        setTimeout(() => props.onSave(), 1500)
-      } else {
-        setResult({ error: data.error || 'Fehler beim Zuweisen' })
-      }
-    } catch {
-      setResult({ error: 'Netzwerkfehler' })
-    }
-    setLoading(false)
-  }
-
-  const renderContractInfo = () => {
-    if (loadingContract) {
-      return <div style={{ color: '#64748b', fontSize: '14px' }}>Lade Vertrag...</div>
-    }
-    if (!contract) {
-      return (
-        <div>
-          <div style={{ marginBottom: '12px', padding: '12px', background: '#fef3c7', color: '#92400e', borderRadius: '8px', fontSize: '14px' }}>
-            Kein aktiver Vertrag gefunden - Einzelkauf
-          </div>
-          <label className="input-label">Preis (CHF)</label>
-          <input type="number" value={price} onChange={(e) => setPrice(+e.target.value)} className="input" />
-        </div>
-      )
-    }
-    
-    if (contract.pricing_model === 'revenue_share') {
-      return (
-        <div style={{ padding: '16px', background: '#f3e8ff', color: '#7c3aed', borderRadius: '10px' }}>
-          <div style={{ fontWeight: 600, marginBottom: '4px' }}>Beteiligungsvertrag</div>
-          <div style={{ fontSize: '20px', fontWeight: 700 }}>{contract.revenue_share_percent}% bei Abschluss</div>
-        </div>
-      )
-    } else if (contract.pricing_model === 'subscription') {
-      return (
-        <div style={{ padding: '16px', background: '#dbeafe', color: '#2563eb', borderRadius: '10px' }}>
-          <div style={{ fontWeight: 600, marginBottom: '4px' }}>Abo-Vertrag</div>
-          <div style={{ fontSize: '20px', fontWeight: 700 }}>CHF {contract.monthly_fee}/Monat</div>
-        </div>
-      )
-    } else {
-      return (
-        <div style={{ padding: '16px', background: '#dcfce7', color: '#166534', borderRadius: '10px' }}>
-          <div style={{ fontWeight: 600, marginBottom: '4px' }}>Fixpreis-Vertrag</div>
-          <div style={{ fontSize: '20px', fontWeight: 700 }}>CHF {contract.price_per_lead} pro Lead</div>
-        </div>
-      )
-    }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={props.onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Lead zuweisen</h2>
-        <p style={{ color: '#64748b', marginBottom: '24px' }}>{props.lead.first_name} {props.lead.last_name}</p>
-        
-        {result?.success && (
-          <div style={{ marginBottom: '16px', padding: '14px', background: '#dcfce7', color: '#166534', borderRadius: '10px' }}>
-            Lead erfolgreich zugewiesen! {result.email_sent ? 'E-Mail wurde gesendet.' : ''}
-          </div>
-        )}
-        
-        {result?.error && (
-          <div style={{ marginBottom: '16px', padding: '14px', background: '#fee2e2', color: '#991b1b', borderRadius: '10px' }}>{result.error}</div>
-        )}
-
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '20px' }}>
-            <label className="input-label">Broker</label>
-            <select value={brokerId} onChange={(e) => setBrokerId(e.target.value)} className="select">
-              {props.brokers.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
-          </div>
-          
-          <div style={{ marginBottom: '24px' }}>
-            <label className="input-label">Preismodell</label>
-            {renderContractInfo()}
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-            <button type="button" onClick={props.onClose} className="btn btn-secondary">Abbrechen</button>
-            <button type="submit" disabled={loading || result?.success} className="btn btn-primary">
-              {loading ? 'Wird zugewiesen...' : 'Zuweisen'}
+          {/* Sort */}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={() => handleSort('created_at')}
+              className={`btn btn-secondary`}
+              style={{ 
+                padding: '10px 14px',
+                background: sortBy === 'created_at' ? 'rgba(139, 92, 246, 0.3)' : undefined
+              }}
+            >
+              Datum {sortBy === 'created_at' && (sortDir === 'desc' ? '↓' : '↑')}
+            </button>
+            <button
+              onClick={() => handleSort('lead_number')}
+              className={`btn btn-secondary`}
+              style={{ 
+                padding: '10px 14px',
+                background: sortBy === 'lead_number' ? 'rgba(139, 92, 246, 0.3)' : undefined
+              }}
+            >
+              ID {sortBy === 'lead_number' && (sortDir === 'desc' ? '↓' : '↑')}
+            </button>
+            <button
+              onClick={() => handleSort('name')}
+              className={`btn btn-secondary`}
+              style={{ 
+                padding: '10px 14px',
+                background: sortBy === 'name' ? 'rgba(139, 92, 246, 0.3)' : undefined
+              }}
+            >
+              Name {sortBy === 'name' && (sortDir === 'desc' ? '↓' : '↑')}
             </button>
           </div>
-        </form>
+
+          {/* Refresh */}
+          <button onClick={loadData} className="btn btn-secondary" style={{ padding: '10px 12px' }}>
+            <RefreshCw size={18} className={loading ? 'spin' : ''} />
+          </button>
+        </div>
+
+        {/* Results Count */}
+        <div style={{ marginTop: '14px', fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>
+          {filtered.length} von {leads.length} Leads
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '60px' }}>
+            <RefreshCw size={32} className="spin" style={{ color: 'rgba(255,255,255,0.5)' }} />
+            <p style={{ marginTop: '16px', color: 'rgba(255,255,255,0.5)' }}>Lade Leads...</p>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px', color: 'rgba(255,255,255,0.5)' }}>
+            <p>Keine Leads gefunden</p>
+          </div>
+        ) : (
+          <div className="table-container" style={{ margin: 0 }}>
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ width: '80px' }}>ID</th>
+                  <th>NAME</th>
+                  <th>KONTAKT</th>
+                  <th>KATEGORIE</th>
+                  <th style={{ width: '120px' }}>STATUS</th>
+                  <th style={{ width: '120px' }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((lead, index) => (
+                  <tr 
+                    key={lead.id} 
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => window.location.href = `/leads/${lead.id}`}
+                  >
+                    <td style={{ color: 'rgba(255,255,255,0.6)' }}>
+                      #{lead.lead_number || (leads.length - index)}
+                    </td>
+                    <td>
+                      <Link 
+                        href={`/leads/${lead.id}`} 
+                        style={{ 
+                          color: 'white', 
+                          fontWeight: 500, 
+                          textDecoration: 'none',
+                          fontSize: '15px'
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {lead.first_name} {lead.last_name}
+                      </Link>
+                    </td>
+                    <td>
+                      <div style={{ color: 'white' }}>{lead.email}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', marginTop: '2px' }}>
+                        {lead.phone}
+                      </div>
+                    </td>
+                    <td style={{ color: 'white' }}>
+                      {lead.category?.name || '-'}
+                    </td>
+                    <td>
+                      {getStatusBadge(lead.status)}
+                    </td>
+                    <td onClick={(e) => e.stopPropagation()}>
+                      {lead.status === 'new' && (
+                        <Link 
+                          href={`/leads/${lead.id}`}
+                          className="btn btn-primary"
+                          style={{ padding: '6px 16px', fontSize: '13px' }}
+                        >
+                          Zuweisen
+                        </Link>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )
