@@ -27,7 +27,6 @@ export async function GET(request: NextRequest) {
     }
     const datePreset = datePresetMap[range] || 'last_7d'
 
-    // Get all ad accounts
     let accounts: any[] = []
     
     const accountsResponse = await fetch(
@@ -58,31 +57,24 @@ export async function GET(request: NextRequest) {
     for (const account of accounts) {
       const accountId = account.id.replace('act_', '')
       
-      // Get campaigns with insights
       const campaignsResponse = await fetch(
         `https://graph.facebook.com/v18.0/act_${accountId}/campaigns?fields=id,name,status,effective_status,daily_budget,lifetime_budget,objective&access_token=${META_ACCESS_TOKEN}`
       )
       const campaignsData = await campaignsResponse.json()
       const campaigns = campaignsData.data || []
 
-      // Get insights for each campaign
       const campaignsWithInsights = await Promise.all(campaigns.map(async (campaign: any) => {
         try {
           const insightsResponse = await fetch(
             `https://graph.facebook.com/v18.0/${campaign.id}/insights?fields=spend,impressions,clicks,ctr,cpc,reach,actions&date_preset=${datePreset}&access_token=${META_ACCESS_TOKEN}`
           )
           const insightsData = await insightsResponse.json()
-          
-          return {
-            ...campaign,
-            insights: insightsData.data?.[0] || null
-          }
+          return { ...campaign, insights: insightsData.data?.[0] || null }
         } catch (e) {
           return { ...campaign, insights: null }
         }
       }))
 
-      // Get daily insights for account
       try {
         const dailyResponse = await fetch(
           `https://graph.facebook.com/v18.0/act_${accountId}/insights?fields=spend,impressions,clicks&date_preset=${datePreset}&time_increment=1&access_token=${META_ACCESS_TOKEN}`
@@ -96,96 +88,64 @@ export async function GET(request: NextRequest) {
             clicks: parseInt(d.clicks || 0)
           }))
         }
-      } catch (e) {
-        console.error('Error fetching daily insights:', e)
-      }
+      } catch (e) {}
 
-      // Get ad creatives with FULL SIZE images
       if (includeCreatives) {
         try {
-          // First get ads with their creative IDs
+          // Get adcreatives directly with all image fields
+          const creativesResponse = await fetch(
+            `https://graph.facebook.com/v18.0/act_${accountId}/adcreatives?fields=id,name,thumbnail_url,image_url,object_story_spec,effective_object_story_id&limit=50&access_token=${META_ACCESS_TOKEN}`
+          )
+          const creativesData = await creativesResponse.json()
+          
+          // Get ads to match creatives with insights
           const adsResponse = await fetch(
-            `https://graph.facebook.com/v18.0/act_${accountId}/ads?fields=id,name,creative{id,name,thumbnail_url,object_story_spec,image_url,asset_feed_spec}&limit=50&access_token=${META_ACCESS_TOKEN}`
+            `https://graph.facebook.com/v18.0/act_${accountId}/ads?fields=id,name,creative{id},insights.date_preset(${datePreset}){spend,impressions,clicks}&limit=100&access_token=${META_ACCESS_TOKEN}`
           )
           const adsData = await adsResponse.json()
           
-          if (adsData.data) {
-            for (const ad of adsData.data) {
-              let imageUrl = null
-              
-              // Try to get full size image from creative
-              if (ad.creative?.id) {
-                try {
-                  // Fetch creative with image_hash to get full resolution
-                  const creativeResponse = await fetch(
-                    `https://graph.facebook.com/v18.0/${ad.creative.id}?fields=name,thumbnail_url,image_url,image_hash,object_story_spec,asset_feed_spec&access_token=${META_ACCESS_TOKEN}`
-                  )
-                  const creativeData = await creativeResponse.json()
-                  
-                  // Try different sources for high-res image
-                  if (creativeData.object_story_spec?.link_data?.image_hash) {
-                    // Get image from hash
-                    const imageHash = creativeData.object_story_spec.link_data.image_hash
-                    const imageResponse = await fetch(
-                      `https://graph.facebook.com/v18.0/act_${accountId}/adimages?hashes=['${imageHash}']&fields=url_128,url,permalink_url&access_token=${META_ACCESS_TOKEN}`
-                    )
-                    const imageData = await imageResponse.json()
-                    if (imageData.data?.[imageHash]) {
-                      imageUrl = imageData.data[imageHash].permalink_url || imageData.data[imageHash].url
-                    }
-                  }
-                  
-                  // Fallback to object_story_spec picture
-                  if (!imageUrl && creativeData.object_story_spec?.link_data?.picture) {
-                    imageUrl = creativeData.object_story_spec.link_data.picture
-                  }
-                  
-                  // Fallback to image_url
-                  if (!imageUrl && creativeData.image_url) {
-                    imageUrl = creativeData.image_url
-                  }
-                  
-                  // Last resort: thumbnail but request larger size
-                  if (!imageUrl && creativeData.thumbnail_url) {
-                    // Replace thumbnail size with larger version
-                    imageUrl = creativeData.thumbnail_url.replace(/\/\d+x\d+\//, '/800x800/')
-                  }
-                } catch (e) {
-                  console.error('Error fetching creative details:', e)
-                }
+          // Build insights map by creative ID
+          const insightsMap: Record<string, any> = {}
+          for (const ad of adsData.data || []) {
+            if (ad.creative?.id && ad.insights?.data?.[0]) {
+              const creativeId = ad.creative.id
+              if (!insightsMap[creativeId]) {
+                insightsMap[creativeId] = { spend: 0, impressions: 0, clicks: 0, adName: ad.name }
               }
-              
-              // Final fallback to ad thumbnail
-              if (!imageUrl && ad.creative?.thumbnail_url) {
-                imageUrl = ad.creative.thumbnail_url
-              }
-
-              // Get insights for this ad
-              let adInsights = { spend: 0, impressions: 0, clicks: 0 }
-              try {
-                const adInsightsResponse = await fetch(
-                  `https://graph.facebook.com/v18.0/${ad.id}/insights?fields=spend,impressions,clicks&date_preset=${datePreset}&access_token=${META_ACCESS_TOKEN}`
-                )
-                const adInsightsData = await adInsightsResponse.json()
-                if (adInsightsData.data?.[0]) {
-                  adInsights = {
-                    spend: parseFloat(adInsightsData.data[0].spend || 0),
-                    impressions: parseInt(adInsightsData.data[0].impressions || 0),
-                    clicks: parseInt(adInsightsData.data[0].clicks || 0)
-                  }
-                }
-              } catch (e) {
-                // Ignore insights error
-              }
-              
-              allCreatives.push({
-                id: ad.creative?.id || ad.id,
-                name: ad.name || ad.creative?.name || 'Unnamed Creative',
-                image_url: imageUrl,
-                thumbnail_url: ad.creative?.thumbnail_url,
-                ...adInsights
-              })
+              insightsMap[creativeId].spend += parseFloat(ad.insights.data[0].spend || 0)
+              insightsMap[creativeId].impressions += parseInt(ad.insights.data[0].impressions || 0)
+              insightsMap[creativeId].clicks += parseInt(ad.insights.data[0].clicks || 0)
             }
+          }
+          
+          for (const creative of creativesData.data || []) {
+            let imageUrl = null
+            
+            // Try to get image from object_story_spec
+            if (creative.object_story_spec?.link_data?.picture) {
+              imageUrl = creative.object_story_spec.link_data.picture
+            } else if (creative.object_story_spec?.link_data?.image_url) {
+              imageUrl = creative.object_story_spec.link_data.image_url
+            } else if (creative.object_story_spec?.photo_data?.url) {
+              imageUrl = creative.object_story_spec.photo_data.url
+            } else if (creative.object_story_spec?.video_data?.image_url) {
+              imageUrl = creative.object_story_spec.video_data.image_url
+            } else if (creative.image_url) {
+              imageUrl = creative.image_url
+            }
+            
+            // Get insights for this creative
+            const insights = insightsMap[creative.id] || { spend: 0, impressions: 0, clicks: 0 }
+            
+            allCreatives.push({
+              id: creative.id,
+              name: insights.adName || creative.name || 'Unnamed Creative',
+              image_url: imageUrl,
+              thumbnail_url: creative.thumbnail_url,
+              spend: insights.spend,
+              impressions: insights.impressions,
+              clicks: insights.clicks
+            })
           }
         } catch (e) {
           console.error('Error fetching creatives:', e)
@@ -200,7 +160,6 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Sort creatives by spend
     allCreatives.sort((a, b) => b.spend - a.spend)
 
     return NextResponse.json({ 
