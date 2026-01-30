@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams
     const range = searchParams.get('range') || 'last_7d'
-    const detailed = searchParams.get('detailed') === 'true'
+    const includeCreatives = searchParams.get('creatives') === 'true'
     
     const datePresetMap: Record<string, string> = {
       'last_7d': 'last_7d',
@@ -46,6 +46,8 @@ export async function GET(request: NextRequest) {
     }
 
     const result = []
+    let dailyInsights: any[] = []
+    let allCreatives: any[] = []
 
     for (const account of accounts) {
       const accountId = account.id.replace('act_', '')
@@ -74,6 +76,72 @@ export async function GET(request: NextRequest) {
         }
       }))
 
+      // Get daily insights for account
+      try {
+        const dailyResponse = await fetch(
+          `https://graph.facebook.com/v18.0/act_${accountId}/insights?fields=spend,impressions,clicks&date_preset=${datePreset}&time_increment=1&access_token=${META_ACCESS_TOKEN}`
+        )
+        const dailyData = await dailyResponse.json()
+        if (dailyData.data) {
+          dailyInsights = dailyData.data.map((d: any) => ({
+            date: d.date_start,
+            spend: parseFloat(d.spend || 0),
+            impressions: parseInt(d.impressions || 0),
+            clicks: parseInt(d.clicks || 0)
+          }))
+        }
+      } catch (e) {
+        console.error('Error fetching daily insights:', e)
+      }
+
+      // Get ad creatives if requested
+      if (includeCreatives) {
+        try {
+          const adsResponse = await fetch(
+            `https://graph.facebook.com/v18.0/act_${accountId}/ads?fields=id,name,creative{id,name,thumbnail_url,image_url,object_story_spec}&date_preset=${datePreset}&access_token=${META_ACCESS_TOKEN}&limit=50`
+          )
+          const adsData = await adsResponse.json()
+          
+          if (adsData.data) {
+            for (const ad of adsData.data) {
+              if (ad.creative) {
+                // Get insights for this ad
+                try {
+                  const adInsightsResponse = await fetch(
+                    `https://graph.facebook.com/v18.0/${ad.id}/insights?fields=spend,impressions,clicks&date_preset=${datePreset}&access_token=${META_ACCESS_TOKEN}`
+                  )
+                  const adInsightsData = await adInsightsResponse.json()
+                  const adInsights = adInsightsData.data?.[0] || {}
+                  
+                  allCreatives.push({
+                    id: ad.creative.id,
+                    name: ad.name || ad.creative.name || 'Unnamed Creative',
+                    thumbnail_url: ad.creative.thumbnail_url,
+                    image_url: ad.creative.image_url,
+                    object_story_spec: ad.creative.object_story_spec,
+                    spend: parseFloat(adInsights.spend || 0),
+                    impressions: parseInt(adInsights.impressions || 0),
+                    clicks: parseInt(adInsights.clicks || 0)
+                  })
+                } catch (e) {
+                  allCreatives.push({
+                    id: ad.creative.id,
+                    name: ad.name || ad.creative.name || 'Unnamed Creative',
+                    thumbnail_url: ad.creative.thumbnail_url,
+                    image_url: ad.creative.image_url,
+                    spend: 0,
+                    impressions: 0,
+                    clicks: 0
+                  })
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.error('Error fetching creatives:', e)
+        }
+      }
+
       result.push({
         id: account.id,
         name: account.name || `Account ${accountId}`,
@@ -82,7 +150,14 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    return NextResponse.json({ accounts: result })
+    // Sort creatives by spend
+    allCreatives.sort((a, b) => b.spend - a.spend)
+
+    return NextResponse.json({ 
+      accounts: result,
+      dailyInsights,
+      creatives: allCreatives
+    })
 
   } catch (err: any) {
     console.error('Meta Ads API error:', err)
