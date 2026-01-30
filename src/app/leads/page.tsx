@@ -1,17 +1,23 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, Search, RefreshCw } from 'lucide-react'
+import { Plus, Search, RefreshCw, UserPlus, Check } from 'lucide-react'
 import Link from 'next/link'
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState<any[]>([])
   const [categories, setCategories] = useState<any[]>([])
+  const [brokers, setBrokers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [showAssignModal, setShowAssignModal] = useState(false)
+  const [selectedLeads, setSelectedLeads] = useState<string[]>([])
   const [formData, setFormData] = useState({
     first_name: '', last_name: '', email: '', phone: '', plz: '', ort: '', category_id: ''
+  })
+  const [assignForm, setAssignForm] = useState({
+    broker_id: '', pricing_model: 'fixed', price_charged: '', revenue_share_percent: '50'
   })
 
   useEffect(() => { loadData() }, [])
@@ -19,11 +25,13 @@ export default function LeadsPage() {
   async function loadData() {
     const { data: leadsData } = await supabase
       .from('leads')
-      .select('*, category:lead_categories(name)')
+      .select('*, category:lead_categories(name, default_price)')
       .order('created_at', { ascending: false })
     const { data: categoriesData } = await supabase.from('lead_categories').select('*').eq('is_active', true)
+    const { data: brokersData } = await supabase.from('brokers').select('*').eq('is_active', true)
     setLeads(leadsData || [])
     setCategories(categoriesData || [])
+    setBrokers(brokersData || [])
     setLoading(false)
   }
 
@@ -77,9 +85,58 @@ export default function LeadsPage() {
     loadData()
   }
 
+  function toggleSelectLead(leadId: string) {
+    setSelectedLeads(prev => 
+      prev.includes(leadId) ? prev.filter(id => id !== leadId) : [...prev, leadId]
+    )
+  }
+
+  function toggleSelectAll() {
+    const newLeads = filtered.filter(l => l.status === 'new')
+    if (selectedLeads.length === newLeads.length) {
+      setSelectedLeads([])
+    } else {
+      setSelectedLeads(newLeads.map(l => l.id))
+    }
+  }
+
+  function openAssignModal() {
+    // Get default price from first selected lead's category
+    const firstLead = leads.find(l => selectedLeads.includes(l.id))
+    if (firstLead?.category?.default_price) {
+      setAssignForm(f => ({ ...f, price_charged: firstLead.category.default_price.toString() }))
+    }
+    setShowAssignModal(true)
+  }
+
+  async function assignLeads(e: React.FormEvent) {
+    e.preventDefault()
+    
+    for (const leadId of selectedLeads) {
+      await fetch('/api/leads/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_id: leadId,
+          broker_id: assignForm.broker_id,
+          pricing_model: assignForm.pricing_model,
+          price_charged: parseFloat(assignForm.price_charged) || 0,
+          revenue_share_percent: assignForm.pricing_model === 'commission' ? parseInt(assignForm.revenue_share_percent) : null
+        })
+      })
+    }
+    
+    setShowAssignModal(false)
+    setSelectedLeads([])
+    setAssignForm({ broker_id: '', pricing_model: 'fixed', price_charged: '', revenue_share_percent: '50' })
+    loadData()
+  }
+
   const filtered = leads.filter(l => 
     `${l.first_name} ${l.last_name} ${l.email}`.toLowerCase().includes(search.toLowerCase())
   )
+
+  const newLeadsCount = filtered.filter(l => l.status === 'new').length
 
   if (loading) {
     return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}><div className="spinner"></div></div>
@@ -89,7 +146,12 @@ export default function LeadsPage() {
     <div>
       <div className="page-header">
         <h1 className="page-title">Leads</h1>
-        <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          {selectedLeads.length > 0 && (
+            <button onClick={openAssignModal} className="btn btn-accent">
+              <UserPlus size={18} /> {selectedLeads.length} zuweisen
+            </button>
+          )}
           <button onClick={generateTestLeads} className="btn btn-secondary">
             <RefreshCw size={18} /> 10 Test-Leads
           </button>
@@ -118,16 +180,47 @@ export default function LeadsPage() {
           <table className="table">
             <thead>
               <tr>
+                <th style={{ width: '50px' }}>
+                  <div 
+                    onClick={toggleSelectAll}
+                    style={{ 
+                      width: '22px', height: '22px', borderRadius: '6px', 
+                      border: '2px solid rgba(255,255,255,0.3)', 
+                      background: selectedLeads.length === newLeadsCount && newLeadsCount > 0 ? '#a78bfa' : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {selectedLeads.length === newLeadsCount && newLeadsCount > 0 && <Check size={14} />}
+                  </div>
+                </th>
                 <th>ID</th>
                 <th>Name</th>
                 <th>Kontakt</th>
                 <th>Kategorie</th>
                 <th>Status</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((lead) => (
-                <tr key={lead.id} style={{ cursor: 'pointer' }} onClick={() => window.location.href = `/leads/${lead.id}`}>
+                <tr key={lead.id}>
+                  <td>
+                    {lead.status === 'new' && (
+                      <div 
+                        onClick={(e) => { e.stopPropagation(); toggleSelectLead(lead.id) }}
+                        style={{ 
+                          width: '22px', height: '22px', borderRadius: '6px', 
+                          border: '2px solid rgba(255,255,255,0.3)', 
+                          background: selectedLeads.includes(lead.id) ? '#a78bfa' : 'transparent',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {selectedLeads.includes(lead.id) && <Check size={14} />}
+                      </div>
+                    )}
+                  </td>
                   <td>#{lead.lead_number}</td>
                   <td>
                     <Link href={`/leads/${lead.id}`} style={{ fontWeight: 500, color: 'white', textDecoration: 'none' }}>
@@ -146,6 +239,16 @@ export default function LeadsPage() {
                       {lead.status === 'new' ? 'Neu' : lead.status === 'assigned' ? 'Zugewiesen' : lead.status}
                     </span>
                   </td>
+                  <td>
+                    {lead.status === 'new' && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setSelectedLeads([lead.id]); openAssignModal() }} 
+                        className="btn btn-sm btn-accent"
+                      >
+                        <UserPlus size={14} />
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -153,6 +256,7 @@ export default function LeadsPage() {
         </div>
       </div>
 
+      {/* New Lead Modal */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -196,6 +300,72 @@ export default function LeadsPage() {
               <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
                 <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowModal(false)}>Abbrechen</button>
                 <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Erstellen</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Modal */}
+      {showAssignModal && (
+        <div className="modal-overlay" onClick={() => setShowAssignModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>Leads zuweisen</h2>
+            <p style={{ opacity: 0.7, marginBottom: '20px' }}>{selectedLeads.length} Lead{selectedLeads.length > 1 ? 's' : ''} ausgewählt</p>
+            
+            <form onSubmit={assignLeads}>
+              <div style={{ marginBottom: '16px' }}>
+                <label className="input-label">Broker</label>
+                <select className="input" value={assignForm.broker_id} onChange={e => setAssignForm({...assignForm, broker_id: e.target.value})} required>
+                  <option value="">-- Auswählen --</option>
+                  {brokers.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label className="input-label">Preismodell</label>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  {['fixed', 'commission', 'single'].map((model) => (
+                    <label key={model} style={{ 
+                      flex: 1, 
+                      padding: '14px', 
+                      border: assignForm.pricing_model === model ? '2px solid #a78bfa' : '2px solid rgba(255,255,255,0.2)', 
+                      borderRadius: '12px', 
+                      cursor: 'pointer', 
+                      background: assignForm.pricing_model === model ? 'rgba(167, 139, 250, 0.1)' : 'transparent',
+                      textAlign: 'center'
+                    }}>
+                      <input type="radio" name="pricing" value={model} checked={assignForm.pricing_model === model} onChange={e => setAssignForm({...assignForm, pricing_model: e.target.value})} style={{ display: 'none' }} />
+                      <div style={{ fontWeight: 600, fontSize: '14px' }}>
+                        {model === 'fixed' ? 'Fixpreis' : model === 'commission' ? 'Provision' : 'Einzelkauf'}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label className="input-label">Preis pro Lead (CHF)</label>
+                <input type="number" step="0.01" className="input" value={assignForm.price_charged} onChange={e => setAssignForm({...assignForm, price_charged: e.target.value})} required />
+                {selectedLeads.length > 1 && assignForm.price_charged && (
+                  <div style={{ fontSize: '13px', opacity: 0.7, marginTop: '6px' }}>
+                    Total: CHF {(parseFloat(assignForm.price_charged) * selectedLeads.length).toFixed(2)}
+                  </div>
+                )}
+              </div>
+
+              {assignForm.pricing_model === 'commission' && (
+                <div style={{ marginBottom: '16px' }}>
+                  <label className="input-label">Beteiligung (%)</label>
+                  <input type="number" className="input" value={assignForm.revenue_share_percent} onChange={e => setAssignForm({...assignForm, revenue_share_percent: e.target.value})} />
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+                <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => { setShowAssignModal(false); setSelectedLeads([]) }}>Abbrechen</button>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
+                  {selectedLeads.length > 1 ? `${selectedLeads.length} Leads zuweisen` : 'Zuweisen'}
+                </button>
               </div>
             </form>
           </div>
