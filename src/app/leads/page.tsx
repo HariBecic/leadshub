@@ -18,12 +18,14 @@ interface Lead {
   category?: {
     id: string
     name: string
+    default_price?: number
   }
 }
 
 interface LeadCategory {
   id: string
   name: string
+  default_price?: number
 }
 
 interface Broker {
@@ -32,6 +34,7 @@ interface Broker {
   contact_person: string
   email: string
   status: string
+  contracts?: any[]
 }
 
 export default function LeadsPage() {
@@ -56,6 +59,14 @@ export default function LeadsPage() {
   
   // Custom dropdown
   const [brokerDropdownOpen, setBrokerDropdownOpen] = useState(false)
+  
+  // For contract detection (like lead detail)
+  const [selectedBrokerContract, setSelectedBrokerContract] = useState<any>(null)
+  const [assignForm, setAssignForm] = useState({
+    pricing_model: 'single',
+    price_charged: '35',
+    revenue_share_percent: '50'
+  })
 
   useEffect(() => { loadData() }, [])
 
@@ -63,16 +74,25 @@ export default function LeadsPage() {
     setLoading(true)
     try {
       const [leadsRes, categoriesRes, brokersRes] = await Promise.all([
-        supabase.from('leads').select('*, category:lead_categories(id, name)').order('created_at', { ascending: false }),
+        supabase.from('leads').select('*, category:lead_categories(id, name, default_price)').order('created_at', { ascending: false }),
         supabase.from('lead_categories').select('*'),
-        supabase.from('brokers').select('*')
+        supabase.from('brokers').select('*').eq('status', 'active')
       ])
       
       if (leadsRes.data) setLeads(leadsRes.data)
       if (categoriesRes.data) setCategories(categoriesRes.data)
+      
+      // Load contracts for each broker (like lead detail)
       if (brokersRes.data) {
-        console.log('Loaded brokers:', brokersRes.data)
-        setBrokers(brokersRes.data)
+        const brokersWithContracts = await Promise.all(brokersRes.data.map(async (broker) => {
+          const { data: contracts } = await supabase
+            .from('contracts')
+            .select('*')
+            .eq('broker_id', broker.id)
+            .eq('status', 'active')
+          return { ...broker, contracts: contracts || [] }
+        }))
+        setBrokers(brokersWithContracts)
       }
     } catch (error) {
       console.error('Error loading data:', error)
@@ -110,6 +130,47 @@ export default function LeadsPage() {
     setFetchingMeta(false)
   }
 
+  // Handle broker change - detect contract (same as lead detail)
+  function handleBrokerChange(brokerId: string) {
+    setBulkBrokerId(brokerId)
+    setBrokerDropdownOpen(false)
+    
+    const broker = brokers.find(b => b.id === brokerId)
+    
+    // Find matching contract
+    let contract = broker?.contracts?.find((c: any) => c.status === 'active')
+    setSelectedBrokerContract(contract)
+    
+    if (contract) {
+      if (contract.pricing_model === 'revenue_share') {
+        setAssignForm({
+          pricing_model: 'commission',
+          price_charged: '0',
+          revenue_share_percent: contract.revenue_share_percent?.toString() || '50'
+        })
+      } else if (contract.pricing_model === 'subscription') {
+        setAssignForm({
+          pricing_model: 'subscription',
+          price_charged: '0',
+          revenue_share_percent: '0'
+        })
+      } else {
+        setAssignForm({
+          pricing_model: 'fixed',
+          price_charged: contract.price_per_lead?.toString() || '35',
+          revenue_share_percent: '0'
+        })
+      }
+    } else {
+      setAssignForm({
+        pricing_model: 'single',
+        price_charged: '35',
+        revenue_share_percent: '0'
+      })
+    }
+  }
+
+  // Bulk assign - use same API as lead detail
   async function bulkAssignLeads() {
     if (!bulkBrokerId || selectedLeads.size === 0) return
     setBulkAssigning(true)
@@ -117,38 +178,42 @@ export default function LeadsPage() {
     try {
       const leadIds = Array.from(selectedLeads)
       let successCount = 0
+      let errorMsg = ''
       
       for (const leadId of leadIds) {
-        // Create assignment directly in Supabase
-        const { error: assignError } = await supabase
-          .from('lead_assignments')
-          .insert({
+        const res = await fetch('/api/leads/assign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             lead_id: leadId,
             broker_id: bulkBrokerId,
-            status: 'pending',
-            pricing_model: 'single',
-            price_charged: 0,
-            assigned_at: new Date().toISOString()
+            pricing_model: assignForm.pricing_model,
+            price_charged: parseFloat(assignForm.price_charged) || 0,
+            revenue_share_percent: assignForm.pricing_model === 'commission' ? parseInt(assignForm.revenue_share_percent) : null
           })
+        })
         
-        if (!assignError) {
-          // Update lead status
-          await supabase
-            .from('leads')
-            .update({ status: 'assigned' })
-            .eq('id', leadId)
-          
+        const data = await res.json()
+        
+        if (res.ok && data.success) {
           successCount++
         } else {
-          console.error('Assignment error for lead', leadId, assignError)
+          console.error('Assignment error for lead', leadId, data)
+          errorMsg = data.error || 'Unbekannter Fehler'
         }
       }
       
-      setImportStatus(`${successCount} Leads erfolgreich zugewiesen`)
+      if (successCount > 0) {
+        setImportStatus(`${successCount} von ${leadIds.length} Leads erfolgreich zugewiesen`)
+      }
+      if (errorMsg && successCount < leadIds.length) {
+        alert(`Einige Zuweisungen fehlgeschlagen: ${errorMsg}`)
+      }
+      
       setSelectedLeads(new Set())
       setShowBulkAssign(false)
       setBulkBrokerId('')
-      setBrokerDropdownOpen(false)
+      setSelectedBrokerContract(null)
       loadData()
       setTimeout(() => setImportStatus(null), 3000)
     } catch (error) {
@@ -216,7 +281,6 @@ export default function LeadsPage() {
     })
 
   const selectedBroker = brokers.find(b => b.id === bulkBrokerId)
-  const activeBrokers = brokers.filter(b => b.status === 'active')
 
   const statusOptions = [
     { value: '', label: 'Alle Status' },
@@ -260,6 +324,9 @@ export default function LeadsPage() {
             {generating ? <RefreshCw size={16} className="spin" /> : <Zap size={16} />}
             10 Test-Leads
           </button>
+          <Link href="/leads/new" className="btn btn-primary">
+            <Plus size={16} /> Neuer Lead
+          </Link>
           <button 
             onClick={fetchMetaLeads} 
             disabled={fetchingMeta}
@@ -313,89 +380,85 @@ export default function LeadsPage() {
         </div>
       )}
 
-      {/* Bulk Assign Modal */}
+      {/* Bulk Assign Modal - Same as Lead Detail */}
       {showBulkAssign && (
         <div className="modal-overlay" onClick={() => { setShowBulkAssign(false); setBrokerDropdownOpen(false) }}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
-            <h2 style={{ marginBottom: '20px', color: 'white' }}>{selectedLeads.size} Leads zuweisen</h2>
+            <h2 style={{ marginBottom: '8px' }}>{selectedLeads.size} Leads zuweisen</h2>
+            <p style={{ opacity: 0.7, marginBottom: '20px' }}>Mehrfachzuweisung</p>
             
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', color: 'rgba(255,255,255,0.7)', fontSize: '14px' }}>
-                Broker auswählen
-              </label>
-              
-              {activeBrokers.length === 0 ? (
-                <div style={{ padding: '20px', textAlign: 'center', color: 'rgba(255,255,255,0.5)' }}>
-                  <p>Keine aktiven Broker gefunden.</p>
-                  <Link href="/broker" style={{ color: '#60a5fa', marginTop: '8px', display: 'inline-block' }}>
-                    Broker erstellen →
-                  </Link>
-                </div>
-              ) : (
-                <div style={{ position: 'relative' }}>
-                  {/* Custom Dropdown Button */}
-                  <button
-                    type="button"
-                    onClick={() => setBrokerDropdownOpen(!brokerDropdownOpen)}
-                    style={{
-                      width: '100%', padding: '14px 18px', borderRadius: '11px',
-                      border: '1px solid rgba(255, 255, 255, 0.18)',
-                      background: 'rgba(30, 27, 75, 0.8)', color: 'white', fontSize: '15px',
-                      textAlign: 'left', cursor: 'pointer',
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                    }}
-                  >
-                    <span style={{ color: selectedBroker ? 'white' : 'rgba(255,255,255,0.5)' }}>
-                      {selectedBroker 
-                        ? `${selectedBroker.name}${selectedBroker.contact_person ? ` (${selectedBroker.contact_person})` : ''}`
-                        : '-- Broker wählen --'
-                      }
-                    </span>
-                    <ChevronDown size={18} style={{ opacity: 0.6 }} />
-                  </button>
-                  
-                  {/* Dropdown List */}
-                  {brokerDropdownOpen && (
-                    <div style={{
-                      position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px',
-                      background: '#1e1b4b', border: '1px solid rgba(255, 255, 255, 0.18)',
-                      borderRadius: '11px', maxHeight: '200px', overflowY: 'auto', zIndex: 100
-                    }}>
-                      {activeBrokers.map(broker => (
-                        <div
-                          key={broker.id}
-                          onClick={() => { setBulkBrokerId(broker.id); setBrokerDropdownOpen(false) }}
-                          style={{
-                            padding: '12px 18px', cursor: 'pointer', color: 'white',
-                            background: bulkBrokerId === broker.id ? 'rgba(139, 92, 246, 0.3)' : 'transparent',
-                            borderBottom: '1px solid rgba(255,255,255,0.1)'
-                          }}
-                          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(139, 92, 246, 0.2)')}
-                          onMouseLeave={e => (e.currentTarget.style.background = bulkBrokerId === broker.id ? 'rgba(139, 92, 246, 0.3)' : 'transparent')}
-                        >
-                          <div style={{ fontWeight: 500 }}>{broker.name}</div>
-                          {broker.contact_person && (
-                            <div style={{ fontSize: '13px', opacity: 0.6, marginTop: '2px' }}>{broker.contact_person}</div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-              
-              <div style={{ marginTop: '12px', fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>
-                {activeBrokers.length} aktive Broker verfügbar
-              </div>
+            <div style={{ marginBottom: '16px' }}>
+              <label className="input-label">Broker</label>
+              <select 
+                className="input" 
+                value={bulkBrokerId} 
+                onChange={e => handleBrokerChange(e.target.value)} 
+                required
+              >
+                <option value="">-- Auswählen --</option>
+                {brokers.map(b => (
+                  <option key={b.id} value={b.id}>
+                    {b.name} {b.contracts && b.contracts.length > 0 ? '(Vertrag)' : ''}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-              <button onClick={() => { setShowBulkAssign(false); setBrokerDropdownOpen(false) }} className="btn btn-secondary">
+            {/* Show contract info if broker has one */}
+            {bulkBrokerId && selectedBrokerContract && (
+              <div style={{ marginBottom: '16px', padding: '16px', borderRadius: '12px', background: 'rgba(167, 139, 250, 0.15)', border: '1px solid rgba(167, 139, 250, 0.3)' }}>
+                <div style={{ fontSize: '12px', opacity: 0.7, marginBottom: '4px' }}>Aktiver Vertrag</div>
+                <div style={{ fontWeight: 600, color: '#c4b5fd' }}>
+                  {selectedBrokerContract.pricing_model === 'revenue_share' && `Beteiligung: ${selectedBrokerContract.revenue_share_percent}%`}
+                  {selectedBrokerContract.pricing_model === 'subscription' && `Abo: CHF ${selectedBrokerContract.monthly_fee}/Monat`}
+                  {selectedBrokerContract.pricing_model === 'fixed' && `Fixpreis: CHF ${selectedBrokerContract.price_per_lead}/Lead`}
+                </div>
+              </div>
+            )}
+
+            {/* Show single purchase info if no contract */}
+            {bulkBrokerId && !selectedBrokerContract && (
+              <div style={{ marginBottom: '16px', padding: '16px', borderRadius: '12px', background: 'rgba(251, 191, 36, 0.15)', border: '1px solid rgba(251, 191, 36, 0.3)' }}>
+                <div style={{ fontSize: '12px', opacity: 0.7, marginBottom: '4px' }}>Kein Vertrag</div>
+                <div style={{ fontWeight: 600, color: '#fde047' }}>Einzelkauf</div>
+              </div>
+            )}
+
+            {/* Only show price input for fixed/single */}
+            {bulkBrokerId && (assignForm.pricing_model === 'fixed' || assignForm.pricing_model === 'single') && (
+              <div style={{ marginBottom: '16px' }}>
+                <label className="input-label">Preis pro Lead (CHF)</label>
+                <input 
+                  type="number" 
+                  step="0.01" 
+                  className="input" 
+                  value={assignForm.price_charged} 
+                  onChange={e => setAssignForm({...assignForm, price_charged: e.target.value})} 
+                  required 
+                />
+                <div style={{ fontSize: '13px', opacity: 0.7, marginTop: '6px' }}>
+                  Total: CHF {(parseFloat(assignForm.price_charged || '0') * selectedLeads.size).toFixed(2)}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+              <button 
+                type="button"
+                onClick={() => { setShowBulkAssign(false); setBrokerDropdownOpen(false); setSelectedBrokerContract(null) }} 
+                className="btn btn-secondary"
+                style={{ flex: 1 }}
+              >
                 Abbrechen
               </button>
-              <button onClick={bulkAssignLeads} disabled={!bulkBrokerId || bulkAssigning} className="btn btn-primary">
+              <button 
+                onClick={bulkAssignLeads} 
+                disabled={!bulkBrokerId || bulkAssigning} 
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+              >
                 {bulkAssigning ? <RefreshCw size={16} className="spin" /> : <Check size={16} />}
-                Zuweisen
+                {selectedLeads.size} Leads zuweisen
               </button>
             </div>
           </div>
