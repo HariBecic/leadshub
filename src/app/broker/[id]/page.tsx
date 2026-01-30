@@ -39,7 +39,7 @@ export default function BrokerDetailPage() {
       .from('lead_assignments')
       .select('*, lead:leads(first_name, last_name)')
       .eq('broker_id', params.id)
-      .order('created_at', { ascending: false })
+      .order('assigned_at', { ascending: false })
       .limit(10)
     
     const { data: categoriesData } = await supabase.from('lead_categories').select('*')
@@ -278,7 +278,7 @@ export default function BrokerDetailPage() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'rgba(255,255,255,0.05)', borderRadius: '12px' }}>
                     <div>
                       <div style={{ fontWeight: 500 }}>{a.lead?.first_name} {a.lead?.last_name}</div>
-                      <div style={{ fontSize: '13px', opacity: 0.6 }}>{new Date(a.created_at).toLocaleDateString('de-CH')}</div>
+                      <div style={{ fontSize: '13px', opacity: 0.6 }}>{new Date(a.assigned_at).toLocaleDateString('de-CH')}</div>
                     </div>
                     <span className={`badge ${a.status === 'success' ? 'badge-success' : a.status === 'sent' ? 'badge-info' : 'badge-neutral'}`}>
                       {a.status}

@@ -31,7 +31,7 @@ export default function LeadDetailPage() {
       .from('lead_assignments')
       .select('*, broker:brokers(name)')
       .eq('lead_id', params.id)
-      .order('created_at', { ascending: false })
+      .order('assigned_at', { ascending: false })
     
     // Load brokers with their active contracts
     const { data: brokersData } = await supabase
@@ -298,8 +298,8 @@ export default function LeadDetailPage() {
                 </div>
                 <div style={{ fontSize: '13px', opacity: 0.7, display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
                   <span>CHF {Number(a.price_charged || 0).toFixed(2)}</span>
-                  <span>{a.pricing_model === 'commission' ? `${a.revenue_share_percent}% Beteiligung` : 'Fixpreis'}</span>
-                  <span>{new Date(a.created_at).toLocaleDateString('de-CH')}</span>
+                  <span>{a.pricing_model === 'commission' ? `${a.revenue_share_percent}% Beteiligung` : a.pricing_model === 'single' ? 'Einzelkauf' : 'Fixpreis'}</span>
+                  <span>{new Date(a.assigned_at).toLocaleDateString('de-CH')}</span>
                 </div>
               </div>
             ))

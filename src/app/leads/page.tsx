@@ -184,26 +184,25 @@ export default function LeadsPage() {
     e.preventDefault()
     
     try {
-      for (const leadId of selectedLeads) {
-        const res = await fetch('/api/leads/assign', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            lead_id: leadId,
-            broker_id: assignForm.broker_id,
-            pricing_model: assignForm.pricing_model,
-            price_charged: parseFloat(assignForm.price_charged) || 0,
-            revenue_share_percent: assignForm.pricing_model === 'commission' ? parseInt(assignForm.revenue_share_percent) : null
-          })
+      // Use bulk assign endpoint for multiple leads
+      const res = await fetch('/api/leads/assign-bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_ids: selectedLeads,
+          broker_id: assignForm.broker_id,
+          pricing_model: assignForm.pricing_model,
+          price_charged: parseFloat(assignForm.price_charged) || 0,
+          revenue_share_percent: assignForm.pricing_model === 'commission' ? parseInt(assignForm.revenue_share_percent) : null
         })
-        
-        const data = await res.json()
-        console.log('Assign response:', data)
-        
-        if (!res.ok) {
-          alert('Fehler: ' + (data.error || 'Unbekannter Fehler'))
-          return
-        }
+      })
+      
+      const data = await res.json()
+      console.log('Assign response:', data)
+      
+      if (!res.ok) {
+        alert('Fehler: ' + (data.error || 'Unbekannter Fehler'))
+        return
       }
       
       setShowAssignModal(false)
