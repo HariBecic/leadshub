@@ -17,22 +17,85 @@ export default function LeadsPage() {
     first_name: '', last_name: '', email: '', phone: '', plz: '', ort: '', category_id: ''
   })
   const [assignForm, setAssignForm] = useState({
-    broker_id: '', pricing_model: 'fixed', price_charged: '', revenue_share_percent: '50'
+    broker_id: '', pricing_model: 'single', price_charged: '', revenue_share_percent: '50'
   })
+  const [selectedBrokerContract, setSelectedBrokerContract] = useState<any>(null)
 
   useEffect(() => { loadData() }, [])
 
   async function loadData() {
     const { data: leadsData } = await supabase
       .from('leads')
-      .select('*, category:lead_categories(name, default_price)')
+      .select('*, category:lead_categories(id, name, default_price)')
       .order('created_at', { ascending: false })
     const { data: categoriesData } = await supabase.from('lead_categories').select('*').eq('is_active', true)
+    
+    // Load brokers with their active contracts
     const { data: brokersData } = await supabase.from('brokers').select('*').eq('status', 'active')
+    const brokersWithContracts = await Promise.all((brokersData || []).map(async (broker) => {
+      const { data: contracts } = await supabase
+        .from('contracts')
+        .select('*')
+        .eq('broker_id', broker.id)
+        .eq('status', 'active')
+      return { ...broker, contracts: contracts || [] }
+    }))
+    
     setLeads(leadsData || [])
     setCategories(categoriesData || [])
-    setBrokers(brokersData || [])
+    setBrokers(brokersWithContracts)
     setLoading(false)
+  }
+
+  // When broker changes, check for active contract
+  function handleBrokerChange(brokerId: string, leadCategoryId?: string) {
+    const broker = brokers.find(b => b.id === brokerId)
+    
+    // Find matching contract (category-specific or general)
+    let contract = broker?.contracts?.find((c: any) => c.category_id === leadCategoryId)
+    if (!contract) {
+      contract = broker?.contracts?.find((c: any) => c.category_id === null)
+    }
+    
+    setSelectedBrokerContract(contract)
+    
+    // Get default price from first selected lead's category
+    const firstLead = leads.find(l => selectedLeads.includes(l.id))
+    const defaultPrice = firstLead?.category?.default_price?.toString() || '35'
+    
+    if (contract) {
+      // Auto-fill from contract
+      if (contract.pricing_model === 'revenue_share') {
+        setAssignForm({
+          broker_id: brokerId,
+          pricing_model: 'commission',
+          price_charged: '0',
+          revenue_share_percent: contract.revenue_share_percent?.toString() || '50'
+        })
+      } else if (contract.pricing_model === 'subscription') {
+        setAssignForm({
+          broker_id: brokerId,
+          pricing_model: 'subscription',
+          price_charged: '0',
+          revenue_share_percent: '0'
+        })
+      } else {
+        setAssignForm({
+          broker_id: brokerId,
+          pricing_model: 'fixed',
+          price_charged: contract.price_per_lead?.toString() || defaultPrice,
+          revenue_share_percent: '0'
+        })
+      }
+    } else {
+      // No contract = Einzelkauf
+      setAssignForm({
+        broker_id: brokerId,
+        pricing_model: 'single',
+        price_charged: defaultPrice,
+        revenue_share_percent: '0'
+      })
+    }
   }
 
   async function createLead(e: React.FormEvent) {
@@ -101,6 +164,14 @@ export default function LeadsPage() {
   }
 
   function openAssignModal() {
+    // Reset form
+    setSelectedBrokerContract(null)
+    setAssignForm({
+      broker_id: '',
+      pricing_model: 'single',
+      price_charged: '',
+      revenue_share_percent: '50'
+    })
     // Get default price from first selected lead's category
     const firstLead = leads.find(l => selectedLeads.includes(l.id))
     if (firstLead?.category?.default_price) {
@@ -316,54 +387,60 @@ export default function LeadsPage() {
             <form onSubmit={assignLeads}>
               <div style={{ marginBottom: '16px' }}>
                 <label className="input-label">Broker</label>
-                <select className="input" value={assignForm.broker_id} onChange={e => setAssignForm({...assignForm, broker_id: e.target.value})} required>
+                <select 
+                  className="input" 
+                  value={assignForm.broker_id} 
+                  onChange={e => {
+                    const firstLead = leads.find(l => selectedLeads.includes(l.id))
+                    handleBrokerChange(e.target.value, firstLead?.category?.id)
+                  }} 
+                  required
+                >
                   <option value="">-- Auswählen --</option>
-                  {brokers.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  {brokers.map(b => (
+                    <option key={b.id} value={b.id}>
+                      {b.name} {b.contracts?.length > 0 ? '(Vertrag)' : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
 
-              <div style={{ marginBottom: '16px' }}>
-                <label className="input-label">Preismodell</label>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  {['fixed', 'commission', 'single'].map((model) => (
-                    <label key={model} style={{ 
-                      flex: 1, 
-                      padding: '14px', 
-                      border: assignForm.pricing_model === model ? '2px solid #a78bfa' : '2px solid rgba(255,255,255,0.2)', 
-                      borderRadius: '12px', 
-                      cursor: 'pointer', 
-                      background: assignForm.pricing_model === model ? 'rgba(167, 139, 250, 0.1)' : 'transparent',
-                      textAlign: 'center'
-                    }}>
-                      <input type="radio" name="pricing" value={model} checked={assignForm.pricing_model === model} onChange={e => setAssignForm({...assignForm, pricing_model: e.target.value})} style={{ display: 'none' }} />
-                      <div style={{ fontWeight: 600, fontSize: '14px' }}>
-                        {model === 'fixed' ? 'Fixpreis' : model === 'commission' ? 'Provision' : 'Einzelkauf'}
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '16px' }}>
-                <label className="input-label">Preis pro Lead (CHF)</label>
-                <input type="number" step="0.01" className="input" value={assignForm.price_charged} onChange={e => setAssignForm({...assignForm, price_charged: e.target.value})} required />
-                {selectedLeads.length > 1 && assignForm.price_charged && (
-                  <div style={{ fontSize: '13px', opacity: 0.7, marginTop: '6px' }}>
-                    Total: CHF {(parseFloat(assignForm.price_charged) * selectedLeads.length).toFixed(2)}
+              {/* Show contract info if broker has one */}
+              {assignForm.broker_id && selectedBrokerContract && (
+                <div style={{ marginBottom: '16px', padding: '16px', borderRadius: '12px', background: 'rgba(167, 139, 250, 0.15)', border: '1px solid rgba(167, 139, 250, 0.3)' }}>
+                  <div style={{ fontSize: '12px', opacity: 0.7, marginBottom: '4px' }}>Aktiver Vertrag</div>
+                  <div style={{ fontWeight: 600, color: '#c4b5fd' }}>
+                    {selectedBrokerContract.pricing_model === 'revenue_share' && `Beteiligung: ${selectedBrokerContract.revenue_share_percent}%`}
+                    {selectedBrokerContract.pricing_model === 'subscription' && `Abo: CHF ${selectedBrokerContract.monthly_fee}/Monat`}
+                    {selectedBrokerContract.pricing_model === 'fixed' && `Fixpreis: CHF ${selectedBrokerContract.price_per_lead}/Lead`}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
 
-              {assignForm.pricing_model === 'commission' && (
+              {/* Show single purchase info if no contract */}
+              {assignForm.broker_id && !selectedBrokerContract && (
+                <div style={{ marginBottom: '16px', padding: '16px', borderRadius: '12px', background: 'rgba(251, 191, 36, 0.15)', border: '1px solid rgba(251, 191, 36, 0.3)' }}>
+                  <div style={{ fontSize: '12px', opacity: 0.7, marginBottom: '4px' }}>Kein Vertrag</div>
+                  <div style={{ fontWeight: 600, color: '#fde047' }}>Einzelkauf</div>
+                </div>
+              )}
+
+              {/* Only show price input for fixed/single */}
+              {assignForm.broker_id && (assignForm.pricing_model === 'fixed' || assignForm.pricing_model === 'single') && (
                 <div style={{ marginBottom: '16px' }}>
-                  <label className="input-label">Beteiligung (%)</label>
-                  <input type="number" className="input" value={assignForm.revenue_share_percent} onChange={e => setAssignForm({...assignForm, revenue_share_percent: e.target.value})} />
+                  <label className="input-label">Preis pro Lead (CHF)</label>
+                  <input type="number" step="0.01" className="input" value={assignForm.price_charged} onChange={e => setAssignForm({...assignForm, price_charged: e.target.value})} required />
+                  {selectedLeads.length > 1 && assignForm.price_charged && (
+                    <div style={{ fontSize: '13px', opacity: 0.7, marginTop: '6px' }}>
+                      Total: CHF {(parseFloat(assignForm.price_charged) * selectedLeads.length).toFixed(2)}
+                    </div>
+                  )}
                 </div>
               )}
 
               <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
                 <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => { setShowAssignModal(false); setSelectedLeads([]) }}>Abbrechen</button>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={!assignForm.broker_id}>
                   {selectedLeads.length > 1 ? `${selectedLeads.length} Leads zuweisen` : 'Zuweisen'}
                 </button>
               </div>
