@@ -94,26 +94,25 @@ export default function MetaAdsPage() {
           <Link href="/marketing" className="btn btn-secondary" style={{ padding: '8px 12px' }}>
             <ArrowLeft size={18} />
           </Link>
-          <div>
-            <h1 style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span style={{ 
-                width: '36px', 
-                height: '36px', 
-                borderRadius: '8px', 
-                background: 'linear-gradient(135deg, #1877F2, #0866FF)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 'bold',
-                fontSize: '16px'
-              }}>
-                f
-              </span>
-              Meta Ads
-            </h1>
-            <p style={{ color: 'rgba(255,255,255,0.6)', marginTop: '4px' }}>
-              Facebook & Instagram Kampagnen
-            </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <img 
+              src="https://cdn.brandfetch.io/idYEwRgACE/w/400/h/400/theme/dark/icon.png?c=1bfwsmEH20zzEfSNTed"
+              alt="Meta"
+              style={{ 
+                width: '40px', 
+                height: '40px', 
+                borderRadius: '10px',
+                objectFit: 'contain',
+                background: 'rgba(255,255,255,0.1)',
+                padding: '6px'
+              }}
+            />
+            <div>
+              <h1>Meta Ads</h1>
+              <p style={{ color: 'rgba(255,255,255,0.6)', marginTop: '2px', fontSize: '14px' }}>
+                Facebook & Instagram Kampagnen
+              </p>
+            </div>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '12px' }}>
