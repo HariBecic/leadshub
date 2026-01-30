@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Zap, Users, Package, FileText, Settings } from 'lucide-react'
+import { LayoutDashboard, Zap, Users, Package, FileText, Settings, Megaphone } from 'lucide-react'
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -9,6 +9,7 @@ const navItems = [
   { href: '/broker', label: 'Broker', icon: Users },
   { href: '/pakete', label: 'Pakete', icon: Package },
   { href: '/rechnungen', label: 'Rechnungen', icon: FileText },
+  { href: '/marketing', label: 'Marketing', icon: Megaphone },
   { href: '/einstellungen', label: 'Einstellungen', icon: Settings },
 ]
 
@@ -17,7 +18,6 @@ export default function Sidebar() {
 
   return (
     <aside className="sidebar">
-      {/* Logo nur auf Desktop sichtbar */}
       <div className="sidebar-logo desktop-only">
         <img src="/logo.png" alt="LeadsHub" />
       </div>
