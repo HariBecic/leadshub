@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { Plus, Search, RefreshCw, Download, Zap, Check, X, Users, ChevronDown } from 'lucide-react'
+import { Plus, Search, RefreshCw, Zap, Check, X, Users, ChevronDown } from 'lucide-react'
 
 interface Lead {
   id: string
@@ -101,7 +101,7 @@ export default function LeadsPage() {
     try {
       const res = await fetch('/api/meta/leads/fetch', { method: 'POST' })
       const data = await res.json()
-      setImportStatus(`${data.imported || 0} neue Leads importiert (${data.pages || 0} Seiten geprüft)`)
+      setImportStatus(`${data.imported || 0} neue Leads importiert`)
       loadData()
       setTimeout(() => setImportStatus(null), 5000)
     } catch (error) {
@@ -116,35 +116,44 @@ export default function LeadsPage() {
     
     try {
       const leadIds = Array.from(selectedLeads)
+      let successCount = 0
       
-      // Use the same API as lead detail page
       for (const leadId of leadIds) {
-        const res = await fetch('/api/leads/assign', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        // Create assignment directly in Supabase
+        const { error: assignError } = await supabase
+          .from('lead_assignments')
+          .insert({
             lead_id: leadId,
             broker_id: bulkBrokerId,
+            status: 'pending',
             pricing_model: 'single',
-            price_charged: 0
+            price_charged: 0,
+            assigned_at: new Date().toISOString()
           })
-        })
         
-        if (!res.ok) {
-          const data = await res.json()
-          console.error('Assignment error:', data)
+        if (!assignError) {
+          // Update lead status
+          await supabase
+            .from('leads')
+            .update({ status: 'assigned' })
+            .eq('id', leadId)
+          
+          successCount++
+        } else {
+          console.error('Assignment error for lead', leadId, assignError)
         }
       }
       
-      setImportStatus(`${leadIds.length} Leads zugewiesen`)
+      setImportStatus(`${successCount} Leads erfolgreich zugewiesen`)
       setSelectedLeads(new Set())
       setShowBulkAssign(false)
       setBulkBrokerId('')
+      setBrokerDropdownOpen(false)
       loadData()
       setTimeout(() => setImportStatus(null), 3000)
     } catch (error) {
       console.error('Error bulk assigning:', error)
-      alert('Fehler beim Zuweisen')
+      alert('Fehler beim Zuweisen: ' + (error as Error).message)
     }
     setBulkAssigning(false)
   }
@@ -184,17 +193,14 @@ export default function LeadsPage() {
     }
   }
 
-  // Filter und Sortieren
   const filtered = leads
     .filter(lead => {
       const matchesSearch = search === '' || 
         `${lead.first_name} ${lead.last_name}`.toLowerCase().includes(search.toLowerCase()) ||
         lead.email?.toLowerCase().includes(search.toLowerCase()) ||
         lead.phone?.includes(search)
-      
       const matchesCategory = filterCategory === '' || lead.category?.id === filterCategory
       const matchesStatus = filterStatus === '' || lead.status === filterStatus
-      
       return matchesSearch && matchesCategory && matchesStatus
     })
     .sort((a, b) => {
@@ -210,6 +216,7 @@ export default function LeadsPage() {
     })
 
   const selectedBroker = brokers.find(b => b.id === bulkBrokerId)
+  const activeBrokers = brokers.filter(b => b.status === 'active')
 
   const statusOptions = [
     { value: '', label: 'Alle Status' },
@@ -249,97 +256,57 @@ export default function LeadsPage() {
       <div className="page-header">
         <h1>Leads</h1>
         <div style={{ display: 'flex', gap: '12px' }}>
-          <button 
-            onClick={generateTestLeads} 
-            disabled={generating}
-            className="btn btn-secondary"
-          >
+          <button onClick={generateTestLeads} disabled={generating} className="btn btn-secondary">
             {generating ? <RefreshCw size={16} className="spin" /> : <Zap size={16} />}
             10 Test-Leads
           </button>
-          <Link href="/leads/new" className="btn btn-primary">
-            <Plus size={16} /> Neuer Lead
-          </Link>
           <button 
             onClick={fetchMetaLeads} 
             disabled={fetchingMeta}
             style={{ 
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '11px 22px',
-              borderRadius: '11px',
-              fontWeight: 550,
-              fontSize: '14px',
-              cursor: 'pointer',
-              border: 'none',
+              display: 'inline-flex', alignItems: 'center', gap: '8px',
+              padding: '11px 22px', borderRadius: '11px', fontWeight: 550, fontSize: '14px',
+              cursor: 'pointer', border: 'none',
               background: 'linear-gradient(135deg, #0081FB 0%, #0064E0 100%)',
-              color: 'white',
-              boxShadow: '0 4px 14px rgba(0, 129, 251, 0.35)',
-              transition: 'all 0.2s'
+              color: 'white', boxShadow: '0 4px 14px rgba(0, 129, 251, 0.35)'
             }}
           >
-            {fetchingMeta ? (
-              <RefreshCw size={16} className="spin" />
-            ) : (
-              <img 
-                src="https://cdn.brandfetch.io/meta.com/w/512/h/512/icon" 
-                alt="Meta" 
-                style={{ width: '18px', height: '18px', borderRadius: '4px' }} 
-              />
+            {fetchingMeta ? <RefreshCw size={16} className="spin" /> : (
+              <img src="https://cdn.brandfetch.io/meta.com/w/512/h/512/icon" alt="Meta" 
+                style={{ width: '18px', height: '18px', borderRadius: '4px' }} />
             )}
             Meta Leads abrufen
           </button>
         </div>
       </div>
 
-      {/* Import Status */}
+      {/* Status Messages */}
       {importStatus && (
         <div style={{ 
-          background: 'rgba(34, 197, 94, 0.15)', 
-          border: '1px solid rgba(34, 197, 94, 0.3)',
-          borderRadius: '12px',
-          padding: '14px 20px',
-          marginBottom: '20px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          color: '#4ade80'
+          background: 'rgba(34, 197, 94, 0.15)', border: '1px solid rgba(34, 197, 94, 0.3)',
+          borderRadius: '12px', padding: '14px 20px', marginBottom: '20px',
+          display: 'flex', alignItems: 'center', gap: '10px', color: '#4ade80'
         }}>
-          <Check size={18} />
-          {importStatus}
+          <Check size={18} /> {importStatus}
         </div>
       )}
 
       {/* Selection Bar */}
       {selectedLeads.size > 0 && (
         <div style={{ 
-          background: 'rgba(139, 92, 246, 0.15)', 
-          border: '1px solid rgba(139, 92, 246, 0.3)',
-          borderRadius: '12px',
-          padding: '14px 20px',
-          marginBottom: '20px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between'
+          background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)',
+          borderRadius: '12px', padding: '14px 20px', marginBottom: '20px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <Users size={18} style={{ color: '#a78bfa' }} />
             <span style={{ color: 'white', fontWeight: 500 }}>{selectedLeads.size} Leads ausgewählt</span>
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
-            <button 
-              onClick={() => setSelectedLeads(new Set())}
-              className="btn btn-secondary"
-              style={{ padding: '8px 16px' }}
-            >
+            <button onClick={() => setSelectedLeads(new Set())} className="btn btn-secondary" style={{ padding: '8px 16px' }}>
               <X size={16} /> Auswahl aufheben
             </button>
-            <button 
-              onClick={() => setShowBulkAssign(true)}
-              className="btn btn-primary"
-              style={{ padding: '8px 16px' }}
-            >
+            <button onClick={() => setShowBulkAssign(true)} className="btn btn-primary" style={{ padding: '8px 16px' }}>
               <Users size={16} /> Alle zuweisen
             </button>
           </div>
@@ -348,15 +315,8 @@ export default function LeadsPage() {
 
       {/* Bulk Assign Modal */}
       {showBulkAssign && (
-        <div 
-          className="modal-overlay" 
-          onClick={() => { setShowBulkAssign(false); setBrokerDropdownOpen(false) }}
-        >
-          <div 
-            className="modal" 
-            onClick={e => e.stopPropagation()} 
-            style={{ maxWidth: '450px' }}
-          >
+        <div className="modal-overlay" onClick={() => { setShowBulkAssign(false); setBrokerDropdownOpen(false) }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
             <h2 style={{ marginBottom: '20px', color: 'white' }}>{selectedLeads.size} Leads zuweisen</h2>
             
             <div style={{ marginBottom: '20px' }}>
@@ -364,9 +324,9 @@ export default function LeadsPage() {
                 Broker auswählen
               </label>
               
-              {brokers.length === 0 ? (
+              {activeBrokers.length === 0 ? (
                 <div style={{ padding: '20px', textAlign: 'center', color: 'rgba(255,255,255,0.5)' }}>
-                  <p>Keine Broker gefunden.</p>
+                  <p>Keine aktiven Broker gefunden.</p>
                   <Link href="/broker" style={{ color: '#60a5fa', marginTop: '8px', display: 'inline-block' }}>
                     Broker erstellen →
                   </Link>
@@ -378,21 +338,14 @@ export default function LeadsPage() {
                     type="button"
                     onClick={() => setBrokerDropdownOpen(!brokerDropdownOpen)}
                     style={{
-                      width: '100%',
-                      padding: '14px 18px',
-                      borderRadius: '11px',
+                      width: '100%', padding: '14px 18px', borderRadius: '11px',
                       border: '1px solid rgba(255, 255, 255, 0.18)',
-                      background: 'rgba(30, 27, 75, 0.8)',
-                      color: 'white',
-                      fontSize: '15px',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
+                      background: 'rgba(30, 27, 75, 0.8)', color: 'white', fontSize: '15px',
+                      textAlign: 'left', cursor: 'pointer',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center'
                     }}
                   >
-                    <span>
+                    <span style={{ color: selectedBroker ? 'white' : 'rgba(255,255,255,0.5)' }}>
                       {selectedBroker 
                         ? `${selectedBroker.name}${selectedBroker.contact_person ? ` (${selectedBroker.contact_person})` : ''}`
                         : '-- Broker wählen --'
@@ -404,40 +357,25 @@ export default function LeadsPage() {
                   {/* Dropdown List */}
                   {brokerDropdownOpen && (
                     <div style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: 0,
-                      right: 0,
-                      marginTop: '4px',
-                      background: '#1e1b4b',
-                      border: '1px solid rgba(255, 255, 255, 0.18)',
-                      borderRadius: '11px',
-                      maxHeight: '200px',
-                      overflowY: 'auto',
-                      zIndex: 100
+                      position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px',
+                      background: '#1e1b4b', border: '1px solid rgba(255, 255, 255, 0.18)',
+                      borderRadius: '11px', maxHeight: '200px', overflowY: 'auto', zIndex: 100
                     }}>
-                      {brokers.map(broker => (
+                      {activeBrokers.map(broker => (
                         <div
                           key={broker.id}
-                          onClick={() => {
-                            setBulkBrokerId(broker.id)
-                            setBrokerDropdownOpen(false)
-                          }}
+                          onClick={() => { setBulkBrokerId(broker.id); setBrokerDropdownOpen(false) }}
                           style={{
-                            padding: '12px 18px',
-                            cursor: 'pointer',
-                            color: 'white',
+                            padding: '12px 18px', cursor: 'pointer', color: 'white',
                             background: bulkBrokerId === broker.id ? 'rgba(139, 92, 246, 0.3)' : 'transparent',
                             borderBottom: '1px solid rgba(255,255,255,0.1)'
                           }}
-                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(139, 92, 246, 0.2)'}
-                          onMouseLeave={e => e.currentTarget.style.background = bulkBrokerId === broker.id ? 'rgba(139, 92, 246, 0.3)' : 'transparent'}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(139, 92, 246, 0.2)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = bulkBrokerId === broker.id ? 'rgba(139, 92, 246, 0.3)' : 'transparent')}
                         >
                           <div style={{ fontWeight: 500 }}>{broker.name}</div>
                           {broker.contact_person && (
-                            <div style={{ fontSize: '13px', opacity: 0.6, marginTop: '2px' }}>
-                              {broker.contact_person}
-                            </div>
+                            <div style={{ fontSize: '13px', opacity: 0.6, marginTop: '2px' }}>{broker.contact_person}</div>
                           )}
                         </div>
                       ))}
@@ -446,24 +384,16 @@ export default function LeadsPage() {
                 </div>
               )}
               
-              {/* Debug info */}
               <div style={{ marginTop: '12px', fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>
-                {brokers.length} Broker geladen
+                {activeBrokers.length} aktive Broker verfügbar
               </div>
             </div>
 
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-              <button 
-                onClick={() => { setShowBulkAssign(false); setBrokerDropdownOpen(false) }}
-                className="btn btn-secondary"
-              >
+              <button onClick={() => { setShowBulkAssign(false); setBrokerDropdownOpen(false) }} className="btn btn-secondary">
                 Abbrechen
               </button>
-              <button 
-                onClick={bulkAssignLeads}
-                disabled={!bulkBrokerId || bulkAssigning}
-                className="btn btn-primary"
-              >
+              <button onClick={bulkAssignLeads} disabled={!bulkBrokerId || bulkAssigning} className="btn btn-primary">
                 {bulkAssigning ? <RefreshCw size={16} className="spin" /> : <Check size={16} />}
                 Zuweisen
               </button>
@@ -475,85 +405,31 @@ export default function LeadsPage() {
       {/* Search & Filter Bar */}
       <div className="card" style={{ marginBottom: '20px', padding: '20px' }}>
         <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* Search */}
           <div style={{ position: 'relative', flex: '1', minWidth: '250px' }}>
             <Search size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.4)' }} />
-            <input
-              type="text"
-              placeholder="Suche nach Name, E-Mail oder Telefon..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="input"
-              style={{ paddingLeft: '44px' }}
-            />
+            <input type="text" placeholder="Suche nach Name, E-Mail oder Telefon..." value={search}
+              onChange={(e) => setSearch(e.target.value)} className="input" style={{ paddingLeft: '44px' }} />
           </div>
-
-          {/* Category Filter */}
-          <select
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
-            className="select"
-            style={{ minWidth: '160px' }}
-          >
+          <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="select" style={{ minWidth: '160px' }}>
             <option value="">Alle Kategorien</option>
-            {categories.map(cat => (
-              <option key={cat.id} value={cat.id}>{cat.name}</option>
-            ))}
+            {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
           </select>
-
-          {/* Status Filter */}
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="select"
-            style={{ minWidth: '140px' }}
-          >
-            {statusOptions.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="select" style={{ minWidth: '140px' }}>
+            {statusOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
           </select>
-
-          {/* Sort Buttons */}
           <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              onClick={() => handleSort('created_at')}
-              className="btn btn-secondary"
-              style={{ 
-                padding: '10px 14px',
-                background: sortBy === 'created_at' ? 'rgba(139, 92, 246, 0.3)' : undefined
-              }}
-            >
-              Datum {sortBy === 'created_at' && (sortDir === 'desc' ? '↓' : '↑')}
-            </button>
-            <button
-              onClick={() => handleSort('lead_number')}
-              className="btn btn-secondary"
-              style={{ 
-                padding: '10px 14px',
-                background: sortBy === 'lead_number' ? 'rgba(139, 92, 246, 0.3)' : undefined
-              }}
-            >
-              ID {sortBy === 'lead_number' && (sortDir === 'desc' ? '↓' : '↑')}
-            </button>
-            <button
-              onClick={() => handleSort('name')}
-              className="btn btn-secondary"
-              style={{ 
-                padding: '10px 14px',
-                background: sortBy === 'name' ? 'rgba(139, 92, 246, 0.3)' : undefined
-              }}
-            >
-              Name {sortBy === 'name' && (sortDir === 'desc' ? '↓' : '↑')}
-            </button>
+            {['created_at', 'lead_number', 'name'].map(field => (
+              <button key={field} onClick={() => handleSort(field as any)} className="btn btn-secondary"
+                style={{ padding: '10px 14px', background: sortBy === field ? 'rgba(139, 92, 246, 0.3)' : undefined }}>
+                {field === 'created_at' ? 'Datum' : field === 'lead_number' ? 'ID' : 'Name'}
+                {sortBy === field && (sortDir === 'desc' ? ' ↓' : ' ↑')}
+              </button>
+            ))}
           </div>
-
-          {/* Refresh */}
           <button onClick={loadData} className="btn btn-secondary" style={{ padding: '10px 12px' }}>
             <RefreshCw size={18} className={loading ? 'spin' : ''} />
           </button>
         </div>
-
-        {/* Results Count */}
         <div style={{ marginTop: '14px', fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>
           {filtered.length} von {leads.length} Leads
         </div>
@@ -564,7 +440,6 @@ export default function LeadsPage() {
         {loading ? (
           <div style={{ textAlign: 'center', padding: '60px' }}>
             <RefreshCw size={32} className="spin" style={{ color: 'rgba(255,255,255,0.5)' }} />
-            <p style={{ marginTop: '16px', color: 'rgba(255,255,255,0.5)' }}>Lade Leads...</p>
           </div>
         ) : filtered.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px', color: 'rgba(255,255,255,0.5)' }}>
@@ -576,12 +451,8 @@ export default function LeadsPage() {
               <thead>
                 <tr>
                   <th style={{ width: '50px', textAlign: 'center' }}>
-                    <input 
-                      type="checkbox" 
-                      checked={selectedLeads.size === filtered.length && filtered.length > 0}
-                      onChange={toggleSelectAll}
-                      style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                    />
+                    <input type="checkbox" checked={selectedLeads.size === filtered.length && filtered.length > 0}
+                      onChange={toggleSelectAll} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
                   </th>
                   <th style={{ width: '70px' }}>ID</th>
                   <th>NAME</th>
@@ -596,36 +467,16 @@ export default function LeadsPage() {
                 {filtered.map((lead) => {
                   const dt = formatDateTime(lead.created_at)
                   return (
-                    <tr 
-                      key={lead.id} 
-                      style={{ 
-                        cursor: 'pointer',
-                        background: selectedLeads.has(lead.id) ? 'rgba(139, 92, 246, 0.15)' : undefined
-                      }}
-                      onClick={() => window.location.href = `/leads/${lead.id}`}
-                    >
+                    <tr key={lead.id} style={{ cursor: 'pointer', background: selectedLeads.has(lead.id) ? 'rgba(139, 92, 246, 0.15)' : undefined }}
+                      onClick={() => window.location.href = `/leads/${lead.id}`}>
                       <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                        <input 
-                          type="checkbox" 
-                          checked={selectedLeads.has(lead.id)}
-                          onChange={() => toggleSelectLead(lead.id)}
-                          style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                        />
+                        <input type="checkbox" checked={selectedLeads.has(lead.id)} onChange={() => toggleSelectLead(lead.id)}
+                          style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
                       </td>
-                      <td style={{ color: 'rgba(255,255,255,0.6)' }}>
-                        #{lead.lead_number}
-                      </td>
+                      <td style={{ color: 'rgba(255,255,255,0.6)' }}>#{lead.lead_number}</td>
                       <td>
-                        <Link 
-                          href={`/leads/${lead.id}`} 
-                          style={{ 
-                            color: 'white', 
-                            fontWeight: 500, 
-                            fontSize: '15px',
-                            textDecoration: 'none'
-                          }}
-                          onClick={e => e.stopPropagation()}
-                        >
+                        <Link href={`/leads/${lead.id}`} style={{ color: 'white', fontWeight: 500, fontSize: '15px', textDecoration: 'none' }}
+                          onClick={e => e.stopPropagation()}>
                           {lead.first_name} {lead.last_name}
                         </Link>
                       </td>
@@ -633,23 +484,15 @@ export default function LeadsPage() {
                         <div style={{ color: 'white' }}>{lead.email}</div>
                         <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px' }}>{lead.phone}</div>
                       </td>
-                      <td style={{ color: 'rgba(255,255,255,0.7)' }}>
-                        {lead.category?.name || '-'}
-                      </td>
+                      <td style={{ color: 'rgba(255,255,255,0.7)' }}>{lead.category?.name || '-'}</td>
                       <td>
                         <div style={{ color: 'white' }}>{dt.date}</div>
                         <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px' }}>{dt.time}</div>
                       </td>
-                      <td>
-                        {getStatusBadge(lead.status)}
-                      </td>
+                      <td>{getStatusBadge(lead.status)}</td>
                       <td onClick={e => e.stopPropagation()}>
                         {lead.status === 'new' && (
-                          <Link
-                            href={`/leads/${lead.id}`}
-                            className="btn btn-primary"
-                            style={{ padding: '6px 14px', fontSize: '13px' }}
-                          >
+                          <Link href={`/leads/${lead.id}`} className="btn btn-primary" style={{ padding: '6px 14px', fontSize: '13px' }}>
                             Zuweisen
                           </Link>
                         )}
