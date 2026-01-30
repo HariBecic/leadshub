@@ -190,7 +190,7 @@ export default function RechnungenPage() {
                     <td>{statusBadge(inv.status)}</td>
                     <td>
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                        <button onClick={() => openDetail(inv)} className="btn btn-sm btn-secondary" title="Details">
+                        <button onClick={() => window.open(`/api/invoices/${inv.id}/pdf`, '_blank')} className="btn btn-sm btn-secondary" title="PDF anzeigen">
                           <Eye size={16} />
                         </button>
                         {inv.status === 'pending' && (
