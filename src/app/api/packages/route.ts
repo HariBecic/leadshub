@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (brokerError || !broker) {
-      return NextResponse.json({ error: 'Broker nicht gefunden', details: brokerError }, { status: 404 })
+      return NextResponse.json({ error: 'Broker nicht gefunden' }, { status: 404 })
     }
 
     // Create package
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (pkgError) {
-      return NextResponse.json({ error: 'Package error', details: pkgError }, { status: 500 })
+      return NextResponse.json({ error: 'Package error', details: pkgError.message }, { status: 500 })
     }
 
     // Generate invoice number
@@ -56,8 +56,9 @@ export async function POST(request: NextRequest) {
       .gte('created_at', `${year}-01-01`)
     
     const invoiceNumber = `${year}-${String((count || 0) + 1).padStart(4, '0')}`
+    const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
 
-    // Create invoice - only required fields
+    // Create invoice
     const { data: invoice, error: invError } = await supabase
       .from('invoices')
       .insert({
@@ -66,6 +67,7 @@ export async function POST(request: NextRequest) {
         type: 'package',
         amount: price || 0,
         status: 'pending',
+        due_date: dueDate.toISOString(),
         package_id: pkg.id
       })
       .select()
@@ -75,7 +77,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ 
         success: true, 
         package: pkg,
-        invoice: null,
         invoice_error: invError.message,
         email_sent: false 
       })
@@ -87,42 +88,140 @@ export async function POST(request: NextRequest) {
       .update({ invoice_id: invoice.id })
       .eq('id', pkg.id)
 
-    // Send email
+    // Send email with glassmorphism design
     let emailSent = false
     if (broker.email) {
+      const packageName = name || `${total_leads}er Paket`
+      const formattedDate = new Date().toLocaleDateString('de-CH')
+      const formattedDueDate = dueDate.toLocaleDateString('de-CH')
+      
       const emailHtml = `
-        <div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;">
-          <div style="background:linear-gradient(135deg,#1e1b4b 0%,#312e81 100%);color:white;padding:32px;text-align:center;border-radius:16px 16px 0 0;">
-            <h1 style="margin:0;font-size:24px;">📦 Lead-Paket bestellt</h1>
-          </div>
-          <div style="padding:32px;background:#ffffff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 16px 16px;">
-            <p style="font-size:16px;color:#1e293b;">Hallo ${broker.contact_person || broker.name},</p>
-            <p style="color:#64748b;">Ihr Paket "${name || `${total_leads}er Paket`}" wurde erstellt.</p>
-            
-            <div style="background:#f8fafc;border-radius:12px;padding:24px;margin:24px 0;text-align:center;">
-              <div style="font-size:14px;color:#64748b;">Zu zahlen</div>
-              <div style="font-size:36px;font-weight:700;color:#1e293b;">CHF ${Number(price).toFixed(2)}</div>
-              <div style="font-size:14px;color:#64748b;margin-top:8px;">Rechnung: ${invoiceNumber}</div>
-            </div>
-
-            <div style="background:#dbeafe;border-radius:8px;padding:16px;margin:24px 0;">
-              <div style="color:#1e40af;font-size:14px;">
-                <strong>Zahlung an:</strong><br>
-                IBAN: CH00 0000 0000 0000 0000 0<br>
-                Referenz: ${invoiceNumber}
-              </div>
-            </div>
-
-            <p style="color:#64748b;font-size:14px;">Nach Zahlungseingang werden Ihre ${total_leads} Leads automatisch zugestellt.</p>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;font-family:system-ui,-apple-system,sans-serif;background:linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#1e1b4b 100%);min-height:100vh;">
+  <div style="max-width:600px;margin:0 auto;padding:40px 20px;">
+    
+    <!-- Logo -->
+    <div style="text-align:center;margin-bottom:32px;">
+      <span style="font-size:28px;font-weight:700;color:white;">leads<span style="color:#f97316;">hub</span><span style="color:#a5b4fc;">°</span></span>
+    </div>
+    
+    <!-- Main Card -->
+    <div style="background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);border-radius:24px;border:1px solid rgba(255,255,255,0.2);overflow:hidden;">
+      
+      <!-- Header -->
+      <div style="background:rgba(255,255,255,0.05);padding:32px;text-align:center;border-bottom:1px solid rgba(255,255,255,0.1);">
+        <div style="font-size:48px;margin-bottom:16px;">📦</div>
+        <h1 style="margin:0;font-size:24px;font-weight:700;color:white;">Lead-Paket bestellt</h1>
+        <p style="margin:8px 0 0;color:rgba(255,255,255,0.7);">${packageName}</p>
+      </div>
+      
+      <!-- Content -->
+      <div style="padding:32px;">
+        <p style="color:rgba(255,255,255,0.9);font-size:16px;line-height:1.6;margin:0 0 24px;">
+          Hallo ${broker.contact_person || broker.name},<br><br>
+          Vielen Dank für Ihre Bestellung! Nach Zahlungseingang werden Ihre Leads automatisch zugestellt.
+        </p>
+        
+        <!-- Invoice Details Card -->
+        <div style="background:rgba(255,255,255,0.08);border-radius:16px;padding:24px;margin-bottom:24px;">
+          <table style="width:100%;border-collapse:collapse;">
+            <tr>
+              <td style="padding:12px 0;color:rgba(255,255,255,0.6);font-size:14px;">Rechnung</td>
+              <td style="padding:12px 0;color:white;font-weight:600;text-align:right;">${invoiceNumber}</td>
+            </tr>
+            <tr>
+              <td style="padding:12px 0;color:rgba(255,255,255,0.6);font-size:14px;border-top:1px solid rgba(255,255,255,0.1);">Datum</td>
+              <td style="padding:12px 0;color:white;text-align:right;border-top:1px solid rgba(255,255,255,0.1);">${formattedDate}</td>
+            </tr>
+            <tr>
+              <td style="padding:12px 0;color:rgba(255,255,255,0.6);font-size:14px;border-top:1px solid rgba(255,255,255,0.1);">Fällig bis</td>
+              <td style="padding:12px 0;color:white;text-align:right;border-top:1px solid rgba(255,255,255,0.1);">${formattedDueDate}</td>
+            </tr>
+            <tr>
+              <td style="padding:12px 0;color:rgba(255,255,255,0.6);font-size:14px;border-top:1px solid rgba(255,255,255,0.1);">Paket</td>
+              <td style="padding:12px 0;color:white;text-align:right;border-top:1px solid rgba(255,255,255,0.1);">${packageName}</td>
+            </tr>
+            <tr>
+              <td style="padding:12px 0;color:rgba(255,255,255,0.6);font-size:14px;border-top:1px solid rgba(255,255,255,0.1);">Anzahl Leads</td>
+              <td style="padding:12px 0;color:white;text-align:right;border-top:1px solid rgba(255,255,255,0.1);">${total_leads}</td>
+            </tr>
+            <tr>
+              <td style="padding:12px 0;color:rgba(255,255,255,0.6);font-size:14px;border-top:1px solid rgba(255,255,255,0.1);">Lieferart</td>
+              <td style="padding:12px 0;color:white;text-align:right;border-top:1px solid rgba(255,255,255,0.1);">${distribution_type === 'instant' ? 'Sofort' : `Verteilt (${leads_per_day || 2}/Tag)`}</td>
+            </tr>
+          </table>
+        </div>
+        
+        <!-- Amount Box -->
+        <div style="background:linear-gradient(135deg,rgba(249,115,22,0.3) 0%,rgba(234,88,12,0.2) 100%);border-radius:16px;padding:32px;text-align:center;margin-bottom:24px;border:1px solid rgba(249,115,22,0.3);">
+          <div style="color:rgba(255,255,255,0.7);font-size:14px;margin-bottom:8px;">Zu zahlen</div>
+          <div style="color:white;font-size:42px;font-weight:700;">CHF ${Number(price).toFixed(2)}</div>
+        </div>
+        
+        <!-- Payment Details -->
+        <div style="background:rgba(99,102,241,0.2);border-radius:16px;padding:24px;margin-bottom:24px;border:1px solid rgba(99,102,241,0.3);">
+          <div style="color:#a5b4fc;font-weight:600;margin-bottom:12px;">💳 Zahlungsdetails</div>
+          <table style="width:100%;">
+            <tr>
+              <td style="color:rgba(255,255,255,0.6);padding:4px 0;font-size:14px;">IBAN:</td>
+              <td style="color:white;padding:4px 0;font-size:14px;">CH93 0076 2011 6238 5295 7</td>
+            </tr>
+            <tr>
+              <td style="color:rgba(255,255,255,0.6);padding:4px 0;font-size:14px;">Bank:</td>
+              <td style="color:white;padding:4px 0;font-size:14px;">Raiffeisenbank</td>
+            </tr>
+            <tr>
+              <td style="color:rgba(255,255,255,0.6);padding:4px 0;font-size:14px;">Empfänger:</td>
+              <td style="color:white;padding:4px 0;font-size:14px;">LeadsHub, 8957 Spreitenbach</td>
+            </tr>
+            <tr>
+              <td style="color:rgba(255,255,255,0.6);padding:4px 0;font-size:14px;">Referenz:</td>
+              <td style="color:white;padding:4px 0;font-size:14px;font-weight:600;">${invoiceNumber}</td>
+            </tr>
+          </table>
+        </div>
+        
+        <!-- Info Box -->
+        <div style="background:rgba(251,191,36,0.15);border-radius:12px;padding:16px;border:1px solid rgba(251,191,36,0.3);">
+          <div style="color:#fde047;font-size:14px;">
+            <strong>⚡ Hinweis:</strong> Ihre Leads werden automatisch nach Zahlungseingang per E-Mail zugestellt.
           </div>
         </div>
+      </div>
+      
+      <!-- Footer -->
+      <div style="background:rgba(0,0,0,0.2);padding:24px 32px;border-top:1px solid rgba(255,255,255,0.1);">
+        <p style="margin:0;color:rgba(255,255,255,0.6);font-size:14px;">
+          Freundliche Grüsse<br>
+          <strong style="color:white;">LeadsHub</strong><br>
+          <span style="font-size:12px;">Sandäckerstrasse 10, 8957 Spreitenbach</span>
+        </p>
+      </div>
+      
+    </div>
+    
+    <!-- Footer Links -->
+    <div style="text-align:center;margin-top:24px;">
+      <p style="color:rgba(255,255,255,0.5);font-size:12px;margin:0;">
+        © 2026 LeadsHub. Alle Rechte vorbehalten.
+      </p>
+    </div>
+    
+  </div>
+</body>
+</html>
       `
 
       try {
         await resend.emails.send({
           from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
           to: broker.email,
-          subject: `📦 Lead-Paket - Rechnung ${invoiceNumber}`,
+          subject: `📦 Rechnung ${invoiceNumber} - ${packageName}`,
           html: emailHtml
         })
         emailSent = true
