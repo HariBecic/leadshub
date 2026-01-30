@@ -28,7 +28,7 @@ export default function LeadsPage() {
       .select('*, category:lead_categories(name, default_price)')
       .order('created_at', { ascending: false })
     const { data: categoriesData } = await supabase.from('lead_categories').select('*').eq('is_active', true)
-    const { data: brokersData } = await supabase.from('brokers').select('*').eq('is_active', true)
+    const { data: brokersData } = await supabase.from('brokers').select('*').eq('status', 'active')
     setLeads(leadsData || [])
     setCategories(categoriesData || [])
     setBrokers(brokersData || [])

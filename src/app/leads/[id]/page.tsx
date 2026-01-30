@@ -49,7 +49,7 @@ export default function LeadDetailPage() {
     const { data: brokersData } = await supabase
       .from('brokers')
       .select('*')
-      .eq('is_active', true)
+      .eq('status', 'active')
     
     setLead(leadData)
     setAssignments(assignmentsData || [])
