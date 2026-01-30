@@ -67,6 +67,19 @@ export default function LeadsPage() {
     price_charged: '35',
     revenue_share_percent: '50'
   })
+  
+  // New Lead Modal
+  const [showNewLeadModal, setShowNewLeadModal] = useState(false)
+  const [newLeadForm, setNewLeadForm] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: '',
+    plz: '',
+    ort: '',
+    category_id: ''
+  })
+  const [savingLead, setSavingLead] = useState(false)
 
   useEffect(() => { loadData() }, [])
 
@@ -128,6 +141,37 @@ export default function LeadsPage() {
       console.error('Error fetching meta leads:', error)
     }
     setFetchingMeta(false)
+  }
+
+  async function createLead(e: React.FormEvent) {
+    e.preventDefault()
+    setSavingLead(true)
+    
+    try {
+      const { error } = await supabase.from('leads').insert({
+        first_name: newLeadForm.first_name,
+        last_name: newLeadForm.last_name,
+        email: newLeadForm.email,
+        phone: newLeadForm.phone,
+        plz: newLeadForm.plz,
+        ort: newLeadForm.ort,
+        category_id: newLeadForm.category_id || null,
+        status: 'new',
+        source: 'manual'
+      })
+      
+      if (error) throw error
+      
+      setShowNewLeadModal(false)
+      setNewLeadForm({ first_name: '', last_name: '', email: '', phone: '', plz: '', ort: '', category_id: '' })
+      setImportStatus('Lead erfolgreich erstellt')
+      loadData()
+      setTimeout(() => setImportStatus(null), 3000)
+    } catch (error) {
+      console.error('Error creating lead:', error)
+      alert('Fehler beim Erstellen: ' + (error as Error).message)
+    }
+    setSavingLead(false)
   }
 
   // Handle broker change - detect contract (same as lead detail)
@@ -324,9 +368,9 @@ export default function LeadsPage() {
             {generating ? <RefreshCw size={16} className="spin" /> : <Zap size={16} />}
             10 Test-Leads
           </button>
-          <Link href="/leads/new" className="btn btn-primary">
+          <button onClick={() => setShowNewLeadModal(true)} className="btn btn-primary">
             <Plus size={16} /> Neuer Lead
-          </Link>
+          </button>
           <button 
             onClick={fetchMetaLeads} 
             disabled={fetchingMeta}
@@ -461,6 +505,116 @@ export default function LeadsPage() {
                 {selectedLeads.size} Leads zuweisen
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Lead Modal */}
+      {showNewLeadModal && (
+        <div className="modal-overlay" onClick={() => setShowNewLeadModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <h2 style={{ marginBottom: '20px' }}>Neuer Lead</h2>
+            
+            <form onSubmit={createLead}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                <div>
+                  <label className="input-label">Vorname *</label>
+                  <input 
+                    type="text" 
+                    className="input" 
+                    value={newLeadForm.first_name}
+                    onChange={e => setNewLeadForm({...newLeadForm, first_name: e.target.value})}
+                    required 
+                  />
+                </div>
+                <div>
+                  <label className="input-label">Nachname *</label>
+                  <input 
+                    type="text" 
+                    className="input" 
+                    value={newLeadForm.last_name}
+                    onChange={e => setNewLeadForm({...newLeadForm, last_name: e.target.value})}
+                    required 
+                  />
+                </div>
+              </div>
+              
+              <div style={{ marginBottom: '16px' }}>
+                <label className="input-label">E-Mail *</label>
+                <input 
+                  type="email" 
+                  className="input" 
+                  value={newLeadForm.email}
+                  onChange={e => setNewLeadForm({...newLeadForm, email: e.target.value})}
+                  required 
+                />
+              </div>
+              
+              <div style={{ marginBottom: '16px' }}>
+                <label className="input-label">Telefon</label>
+                <input 
+                  type="tel" 
+                  className="input" 
+                  value={newLeadForm.phone}
+                  onChange={e => setNewLeadForm({...newLeadForm, phone: e.target.value})}
+                />
+              </div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '16px', marginBottom: '16px' }}>
+                <div>
+                  <label className="input-label">PLZ</label>
+                  <input 
+                    type="text" 
+                    className="input" 
+                    value={newLeadForm.plz}
+                    onChange={e => setNewLeadForm({...newLeadForm, plz: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="input-label">Ort</label>
+                  <input 
+                    type="text" 
+                    className="input" 
+                    value={newLeadForm.ort}
+                    onChange={e => setNewLeadForm({...newLeadForm, ort: e.target.value})}
+                  />
+                </div>
+              </div>
+              
+              <div style={{ marginBottom: '24px' }}>
+                <label className="input-label">Kategorie</label>
+                <select 
+                  className="input" 
+                  value={newLeadForm.category_id}
+                  onChange={e => setNewLeadForm({...newLeadForm, category_id: e.target.value})}
+                >
+                  <option value="">-- Keine --</option>
+                  {categories.map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button 
+                  type="button"
+                  onClick={() => setShowNewLeadModal(false)} 
+                  className="btn btn-secondary"
+                  style={{ flex: 1 }}
+                >
+                  Abbrechen
+                </button>
+                <button 
+                  type="submit"
+                  disabled={savingLead} 
+                  className="btn btn-primary"
+                  style={{ flex: 1 }}
+                >
+                  {savingLead ? <RefreshCw size={16} className="spin" /> : <Plus size={16} />}
+                  Lead erstellen
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
