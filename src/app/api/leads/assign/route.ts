@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
+import { paymentGateEmail, revenueShareLeadEmail } from '@/lib/email-template'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 const supabase = createClient(supabaseUrl, supabaseKey)
 const resend = new Resend(process.env.RESEND_API_KEY)
+
+// IBAN für Zahlungen
+const IBAN = process.env.IBAN || 'CH00 0000 0000 0000 0'
 
 export async function POST(request: NextRequest) {
   try {
@@ -65,6 +69,7 @@ export async function POST(request: NextRequest) {
     // For commission: Send leads immediately (free), invoice at end of month
     let invoiceCreated = false
     let emailSent = false
+    const categoryName = lead.category?.name || 'Lead'
 
     if (pricing_model === 'fixed' || pricing_model === 'single') {
       // Create invoice
@@ -75,7 +80,6 @@ export async function POST(request: NextRequest) {
         .gte('created_at', `${year}-01-01`)
       
       const invoiceNumber = `${year}-${String((count || 0) + 1).padStart(4, '0')}`
-      const categoryName = lead.category?.name || 'Lead'
 
       await supabase.from('invoices').insert({
         invoice_number: invoiceNumber,
@@ -90,49 +94,15 @@ export async function POST(request: NextRequest) {
 
       invoiceCreated = true
 
-      // Send invoice email (not lead details yet)
+      // Send Payment Gate email (not lead details yet)
       if (broker.email) {
-        const emailHtml = `
-          <div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;">
-            <div style="background:linear-gradient(135deg,#1e1b4b 0%,#312e81 100%);color:white;padding:32px;text-align:center;border-radius:16px 16px 0 0;">
-              <h1 style="margin:0;font-size:24px;">📄 Neuer Lead verfügbar</h1>
-            </div>
-            <div style="padding:32px;background:#ffffff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 16px 16px;">
-              <p style="font-size:16px;color:#1e293b;">Hallo ${broker.contact_person || broker.name},</p>
-              <p style="color:#64748b;line-height:1.6;">
-                Ein neuer ${categoryName}-Lead ist für Sie verfügbar. Nach Zahlungseingang erhalten Sie die vollständigen Kontaktdaten.
-              </p>
-              
-              <div style="background:#f8fafc;border-radius:12px;padding:24px;margin:24px 0;text-align:center;">
-                <div style="font-size:14px;color:#64748b;margin-bottom:8px;">Betrag</div>
-                <div style="font-size:32px;font-weight:700;color:#1e293b;">CHF ${Number(price_charged).toFixed(2)}</div>
-                <div style="font-size:14px;color:#64748b;margin-top:8px;">Rechnung: ${invoiceNumber}</div>
-              </div>
-
-              <div style="background:#fef3c7;border-radius:8px;padding:16px;margin:24px 0;">
-                <div style="color:#92400e;font-size:14px;">
-                  <strong>Hinweis:</strong> Die Lead-Daten werden Ihnen nach Zahlungseingang automatisch per E-Mail zugestellt.
-                </div>
-              </div>
-
-              <div style="background:#dbeafe;border-radius:8px;padding:16px;margin:24px 0;">
-                <div style="color:#1e40af;font-size:14px;">
-                  <strong>Zahlungsdetails:</strong><br>
-                  IBAN: CH00 0000 0000 0000 0000 0<br>
-                  Empfänger: LeadsHub GmbH<br>
-                  Referenz: ${invoiceNumber}
-                </div>
-              </div>
-              
-              <hr style="border:none;border-top:1px solid #e2e8f0;margin:32px 0;">
-              
-              <p style="color:#64748b;font-size:14px;margin:0;">
-                Freundliche Grüsse<br>
-                <strong style="color:#1e293b;">LeadsHub</strong>
-              </p>
-            </div>
-          </div>
-        `
+        const emailHtml = paymentGateEmail({
+          brokerName: broker.contact_person || broker.name,
+          category: categoryName,
+          amount: Number(price_charged) || 0,
+          invoiceNumber: invoiceNumber,
+          iban: IBAN
+        })
 
         try {
           await resend.emails.send({
@@ -159,46 +129,17 @@ export async function POST(request: NextRequest) {
 
       // Send email to broker with lead details
       if (broker.email) {
-        const categoryName = lead.category?.name || 'Lead'
-        
-        const emailHtml = `
-          <div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;">
-            <div style="background:linear-gradient(135deg,#1e1b4b 0%,#312e81 100%);color:white;padding:32px;text-align:center;border-radius:16px 16px 0 0;">
-              <h1 style="margin:0;font-size:24px;">🎯 Neuer Lead</h1>
-            </div>
-            <div style="padding:32px;background:#ffffff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 16px 16px;">
-              <p style="font-size:16px;color:#1e293b;">Hallo ${broker.contact_person || broker.name},</p>
-              <p style="color:#64748b;line-height:1.6;">
-                Sie haben einen neuen ${categoryName}-Lead erhalten:
-              </p>
-              
-              <div style="background:#f8fafc;border-radius:12px;padding:24px;margin:24px 0;">
-                <table style="width:100%;font-size:14px;">
-                  <tr><td style="color:#64748b;padding:8px 0;">Name:</td><td style="color:#1e293b;font-weight:600;">${lead.first_name} ${lead.last_name}</td></tr>
-                  ${lead.email ? `<tr><td style="color:#64748b;padding:8px 0;">E-Mail:</td><td style="color:#1e293b;"><a href="mailto:${lead.email}">${lead.email}</a></td></tr>` : ''}
-                  ${lead.phone ? `<tr><td style="color:#64748b;padding:8px 0;">Telefon:</td><td style="color:#1e293b;"><a href="tel:${lead.phone}">${lead.phone}</a></td></tr>` : ''}
-                  ${lead.plz || lead.ort ? `<tr><td style="color:#64748b;padding:8px 0;">Standort:</td><td style="color:#1e293b;">${lead.plz || ''} ${lead.ort || ''}</td></tr>` : ''}
-                </table>
-              </div>
-
-              ${pricing_model === 'commission' ? `
-              <div style="background:#f3e8ff;border-radius:8px;padding:16px;margin:24px 0;">
-                <div style="color:#7c3aed;font-size:14px;">
-                  <strong>Beteiligungsmodell:</strong> Bei erfolgreichem Abschluss wird eine Provision von ${revenue_share_percent}% fällig.
-                  Wir fragen in einigen Tagen nach dem Status.
-                </div>
-              </div>
-              ` : ''}
-              
-              <hr style="border:none;border-top:1px solid #e2e8f0;margin:32px 0;">
-              
-              <p style="color:#64748b;font-size:14px;margin:0;">
-                Freundliche Grüsse<br>
-                <strong style="color:#1e293b;">LeadsHub</strong>
-              </p>
-            </div>
-          </div>
-        `
+        const emailHtml = revenueShareLeadEmail({
+          brokerName: broker.contact_person || broker.name,
+          category: categoryName,
+          leadName: `${lead.first_name} ${lead.last_name}`,
+          leadEmail: lead.email || '',
+          leadPhone: lead.phone || '',
+          leadPlz: lead.plz || '',
+          leadOrt: lead.ort || '',
+          revenueSharePercent: revenue_share_percent || 0,
+          extraData: lead.extra_data
+        })
 
         try {
           await resend.emails.send({
