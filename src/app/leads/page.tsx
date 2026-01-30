@@ -30,6 +30,7 @@ interface Broker {
   id: string
   company_name: string
   contact_name: string
+  status: string
 }
 
 export default function LeadsPage() {
@@ -57,15 +58,19 @@ export default function LeadsPage() {
   async function loadData() {
     setLoading(true)
     try {
+      // Load all data
       const [leadsRes, categoriesRes, brokersRes] = await Promise.all([
         supabase.from('leads').select('*, category:lead_categories(id, name)').order('created_at', { ascending: false }),
         supabase.from('lead_categories').select('*'),
-        supabase.from('brokers').select('id, company_name, contact_name').eq('status', 'active')
+        supabase.from('brokers').select('*') // Get ALL brokers, filter later
       ])
       
       if (leadsRes.data) setLeads(leadsRes.data)
       if (categoriesRes.data) setCategories(categoriesRes.data)
-      if (brokersRes.data) setBrokers(brokersRes.data)
+      if (brokersRes.data) {
+        console.log('Loaded brokers:', brokersRes.data) // Debug
+        setBrokers(brokersRes.data)
+      }
     } catch (error) {
       console.error('Error loading data:', error)
     }
@@ -193,6 +198,9 @@ export default function LeadsPage() {
       }
       return sortDir === 'asc' ? comparison : -comparison
     })
+
+  // Filter active brokers for assignment
+  const activeBrokers = brokers.filter(b => b.status === 'active' || b.status === 'aktiv' || !b.status)
 
   const statusOptions = [
     { value: '', label: 'Alle Status' },
@@ -334,18 +342,32 @@ export default function LeadsPage() {
             
             <div style={{ marginBottom: '20px' }}>
               <label className="label">Broker auswählen</label>
-              <select 
-                value={bulkBrokerId} 
-                onChange={e => setBulkBrokerId(e.target.value)}
-                className="select"
-              >
-                <option value="">-- Broker wählen --</option>
-                {brokers.map(broker => (
-                  <option key={broker.id} value={broker.id}>
-                    {broker.company_name} ({broker.contact_name})
-                  </option>
-                ))}
-              </select>
+              {brokers.length === 0 ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: 'rgba(255,255,255,0.5)' }}>
+                  <p>Keine Broker gefunden.</p>
+                  <Link href="/broker" style={{ color: '#60a5fa', marginTop: '8px', display: 'inline-block' }}>
+                    Broker erstellen →
+                  </Link>
+                </div>
+              ) : (
+                <select 
+                  value={bulkBrokerId} 
+                  onChange={e => setBulkBrokerId(e.target.value)}
+                  className="select"
+                >
+                  <option value="">-- Broker wählen --</option>
+                  {brokers.map(broker => (
+                    <option key={broker.id} value={broker.id}>
+                      {broker.company_name} {broker.contact_name ? `(${broker.contact_name})` : ''} {broker.status !== 'active' ? `[${broker.status}]` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+              
+              {/* Debug info */}
+              <div style={{ marginTop: '12px', fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>
+                {brokers.length} Broker geladen
+              </div>
             </div>
 
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
