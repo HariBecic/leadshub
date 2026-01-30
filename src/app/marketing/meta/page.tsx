@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Play, Pause, ExternalLink, RefreshCw, TrendingUp, ChevronDown } from 'lucide-react'
+import { ArrowLeft, Play, Pause, ExternalLink, RefreshCw, TrendingUp, ChevronDown, Check } from 'lucide-react'
 
 interface Campaign {
   id: string
@@ -46,16 +46,19 @@ export default function MetaAdsPage() {
   const [toggling, setToggling] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'performance' | 'creative' | 'assets'>('performance')
   const [dateRange, setDateRange] = useState('last_7d')
+  const [selectedCampaigns, setSelectedCampaigns] = useState<string[]>([])
+  const [showCampaignDropdown, setShowCampaignDropdown] = useState(false)
 
   useEffect(() => {
     loadData()
-  }, [dateRange])
+  }, [dateRange, selectedCampaigns])
 
   async function loadData() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/meta/ads?range=${dateRange}`)
+      const campaignIds = selectedCampaigns.length > 0 ? `&campaigns=${selectedCampaigns.join(',')}` : ''
+      const res = await fetch(`/api/meta/ads?range=${dateRange}${campaignIds}`)
       const data = await res.json()
       if (data.error) {
         setError(data.error)
@@ -92,6 +95,23 @@ export default function MetaAdsPage() {
     setToggling(null)
   }
 
+  function toggleCampaignSelection(campaignId: string) {
+    setSelectedCampaigns(prev => 
+      prev.includes(campaignId) 
+        ? prev.filter(id => id !== campaignId)
+        : [...prev, campaignId]
+    )
+  }
+
+  function selectAllCampaigns() {
+    const allIds = adAccounts.flatMap(a => a.campaigns.map(c => c.id))
+    setSelectedCampaigns(allIds)
+  }
+
+  function clearCampaignSelection() {
+    setSelectedCampaigns([])
+  }
+
   function formatCurrency(amount: number, currency = 'CHF') {
     return new Intl.NumberFormat('de-CH', { style: 'currency', currency }).format(amount)
   }
@@ -103,6 +123,8 @@ export default function MetaAdsPage() {
   function formatPercent(num: number) {
     return num.toFixed(2) + '%'
   }
+
+  const allCampaigns = adAccounts.flatMap(a => a.campaigns)
 
   // Simple SVG Line Chart
   function renderChart() {
@@ -266,6 +288,144 @@ export default function MetaAdsPage() {
         </button>
       </div>
 
+      {/* Campaign Filter */}
+      <div className="card" style={{ marginBottom: '24px', padding: '16px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.6)' }}>Kampagnen:</span>
+          
+          {/* Campaign Dropdown */}
+          <div style={{ position: 'relative' }}>
+            <button 
+              onClick={() => setShowCampaignDropdown(!showCampaignDropdown)}
+              className="btn btn-secondary"
+              style={{ minWidth: '200px', justifyContent: 'space-between' }}
+            >
+              <span>
+                {selectedCampaigns.length === 0 
+                  ? 'Alle Kampagnen' 
+                  : selectedCampaigns.length === allCampaigns.length
+                    ? 'Alle Kampagnen'
+                    : `${selectedCampaigns.length} ausgewählt`}
+              </span>
+              <ChevronDown size={16} />
+            </button>
+            
+            {showCampaignDropdown && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                marginTop: '4px',
+                background: 'rgba(30, 27, 75, 0.98)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '12px',
+                padding: '8px 0',
+                minWidth: '300px',
+                maxHeight: '300px',
+                overflowY: 'auto',
+                zIndex: 100,
+                boxShadow: '0 10px 40px rgba(0,0,0,0.3)'
+              }}>
+                {/* Quick actions */}
+                <div style={{ padding: '8px 16px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: '8px' }}>
+                  <button 
+                    onClick={selectAllCampaigns}
+                    className="btn btn-secondary"
+                    style={{ padding: '4px 12px', fontSize: '12px' }}
+                  >
+                    Alle auswählen
+                  </button>
+                  <button 
+                    onClick={clearCampaignSelection}
+                    className="btn btn-secondary"
+                    style={{ padding: '4px 12px', fontSize: '12px' }}
+                  >
+                    Auswahl löschen
+                  </button>
+                </div>
+                
+                {/* Campaign list */}
+                {allCampaigns.map(campaign => (
+                  <div 
+                    key={campaign.id}
+                    onClick={() => toggleCampaignSelection(campaign.id)}
+                    style={{
+                      padding: '10px 16px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      transition: 'background 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <div style={{
+                      width: '20px',
+                      height: '20px',
+                      borderRadius: '4px',
+                      border: '2px solid rgba(255,255,255,0.3)',
+                      background: selectedCampaigns.includes(campaign.id) ? '#8B5CF6' : 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      {selectedCampaigns.includes(campaign.id) && <Check size={14} />}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '14px' }}>{campaign.name}</div>
+                      <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>
+                        {campaign.objective.replace('OUTCOME_', '')} • {campaign.effective_status === 'ACTIVE' ? 'Aktiv' : 'Pausiert'}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Selected campaign tags */}
+          {selectedCampaigns.length > 0 && selectedCampaigns.length < allCampaigns.length && (
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {selectedCampaigns.map(id => {
+                const campaign = allCampaigns.find(c => c.id === id)
+                if (!campaign) return null
+                return (
+                  <span 
+                    key={id}
+                    style={{
+                      background: 'rgba(139, 92, 246, 0.3)',
+                      padding: '4px 12px',
+                      borderRadius: '20px',
+                      fontSize: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    {campaign.name.substring(0, 25)}{campaign.name.length > 25 ? '...' : ''}
+                    <span 
+                      onClick={() => toggleCampaignSelection(id)}
+                      style={{ cursor: 'pointer', opacity: 0.7 }}
+                    >
+                      ✕
+                    </span>
+                  </span>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Click outside to close dropdown */}
+      {showCampaignDropdown && (
+        <div 
+          style={{ position: 'fixed', inset: 0, zIndex: 99 }}
+          onClick={() => setShowCampaignDropdown(false)}
+        />
+      )}
+
       {loading ? (
         <div className="card" style={{ textAlign: 'center', padding: '60px' }}>
           <RefreshCw size={32} className="spin" style={{ color: 'rgba(255,255,255,0.5)' }} />
@@ -350,8 +510,34 @@ export default function MetaAdsPage() {
                       </thead>
                       <tbody>
                         {account.campaigns.map(campaign => (
-                          <tr key={campaign.id}>
-                            <td><strong>{campaign.name}</strong></td>
+                          <tr 
+                            key={campaign.id}
+                            style={{ 
+                              background: selectedCampaigns.includes(campaign.id) ? 'rgba(139, 92, 246, 0.2)' : 'transparent'
+                            }}
+                          >
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div 
+                                  onClick={() => toggleCampaignSelection(campaign.id)}
+                                  style={{
+                                    width: '18px',
+                                    height: '18px',
+                                    borderRadius: '4px',
+                                    border: '2px solid rgba(255,255,255,0.3)',
+                                    background: selectedCampaigns.includes(campaign.id) ? '#8B5CF6' : 'transparent',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    flexShrink: 0
+                                  }}
+                                >
+                                  {selectedCampaigns.includes(campaign.id) && <Check size={12} />}
+                                </div>
+                                <strong>{campaign.name}</strong>
+                              </div>
+                            </td>
                             <td>
                               <span className={`status-badge status-${campaign.effective_status === 'ACTIVE' ? 'active' : 'paused'}`}>
                                 {campaign.effective_status === 'ACTIVE' ? 'Aktiv' : 'Pausiert'}
