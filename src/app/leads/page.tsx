@@ -183,24 +183,38 @@ export default function LeadsPage() {
   async function assignLeads(e: React.FormEvent) {
     e.preventDefault()
     
-    for (const leadId of selectedLeads) {
-      await fetch('/api/leads/assign', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          lead_id: leadId,
-          broker_id: assignForm.broker_id,
-          pricing_model: assignForm.pricing_model,
-          price_charged: parseFloat(assignForm.price_charged) || 0,
-          revenue_share_percent: assignForm.pricing_model === 'commission' ? parseInt(assignForm.revenue_share_percent) : null
+    try {
+      for (const leadId of selectedLeads) {
+        const res = await fetch('/api/leads/assign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lead_id: leadId,
+            broker_id: assignForm.broker_id,
+            pricing_model: assignForm.pricing_model,
+            price_charged: parseFloat(assignForm.price_charged) || 0,
+            revenue_share_percent: assignForm.pricing_model === 'commission' ? parseInt(assignForm.revenue_share_percent) : null
+          })
         })
-      })
+        
+        const data = await res.json()
+        console.log('Assign response:', data)
+        
+        if (!res.ok) {
+          alert('Fehler: ' + (data.error || 'Unbekannter Fehler'))
+          return
+        }
+      }
+      
+      setShowAssignModal(false)
+      setSelectedLeads([])
+      setAssignForm({ broker_id: '', pricing_model: 'single', price_charged: '', revenue_share_percent: '50' })
+      setSelectedBrokerContract(null)
+      loadData()
+    } catch (err) {
+      console.error('Assign error:', err)
+      alert('Netzwerkfehler beim Zuweisen')
     }
-    
-    setShowAssignModal(false)
-    setSelectedLeads([])
-    setAssignForm({ broker_id: '', pricing_model: 'fixed', price_charged: '', revenue_share_percent: '50' })
-    loadData()
   }
 
   const filtered = leads.filter(l => 

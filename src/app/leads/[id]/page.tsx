@@ -111,21 +111,32 @@ export default function LeadDetailPage() {
   async function assignLead(e: React.FormEvent) {
     e.preventDefault()
     
-    const res = await fetch('/api/leads/assign', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        lead_id: params.id,
-        broker_id: assignForm.broker_id,
-        pricing_model: assignForm.pricing_model,
-        price_charged: parseFloat(assignForm.price_charged) || 0,
-        revenue_share_percent: assignForm.pricing_model === 'commission' ? parseInt(assignForm.revenue_share_percent) : null
+    try {
+      const res = await fetch('/api/leads/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_id: params.id,
+          broker_id: assignForm.broker_id,
+          pricing_model: assignForm.pricing_model,
+          price_charged: parseFloat(assignForm.price_charged) || 0,
+          revenue_share_percent: assignForm.pricing_model === 'commission' ? parseInt(assignForm.revenue_share_percent) : null
+        })
       })
-    })
-    
-    if (res.ok) {
-      setShowAssignModal(false)
-      loadData()
+      
+      const data = await res.json()
+      console.log('Assign response:', data)
+      
+      if (res.ok && data.success) {
+        setShowAssignModal(false)
+        setSelectedBrokerContract(null)
+        loadData()
+      } else {
+        alert('Fehler: ' + (data.error || 'Unbekannter Fehler'))
+      }
+    } catch (err) {
+      console.error('Assign error:', err)
+      alert('Netzwerkfehler beim Zuweisen')
     }
   }
 
