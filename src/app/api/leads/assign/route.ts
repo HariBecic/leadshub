@@ -51,8 +51,7 @@ export async function POST(request: NextRequest) {
         pricing_model: pricing_model || 'single',
         price_charged: price_charged || 0,
         revenue_share_percent: revenue_share_percent || null,
-        status: 'sent',
-        created_at: new Date().toISOString()
+        status: 'sent'
       })
       .select()
       .single()
