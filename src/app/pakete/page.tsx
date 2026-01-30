@@ -16,7 +16,7 @@ export default function PaketePage() {
     category_id: '',
     total_leads: 10,
     price: 500,
-    delivery_type: 'instant',
+    distribution_type: 'instant',
     leads_per_day: 2
   })
 
@@ -54,8 +54,8 @@ export default function PaketePage() {
       total_leads: formData.total_leads,
       delivered_leads: 0,
       price: formData.price,
-      delivery_type: formData.delivery_type,
-      leads_per_day: formData.delivery_type === 'distributed' ? formData.leads_per_day : null,
+      distribution_type: formData.distribution_type,
+      leads_per_day: formData.distribution_type === 'distributed' ? formData.leads_per_day : null,
       status: 'active'
     })
 
@@ -71,7 +71,7 @@ export default function PaketePage() {
       category_id: '',
       total_leads: 10,
       price: 500,
-      delivery_type: 'instant',
+      distribution_type: 'instant',
       leads_per_day: 2
     })
     loadData()
@@ -125,7 +125,7 @@ export default function PaketePage() {
                     </td>
                     <td>
                       <span className="badge badge-info">
-                        {pkg.delivery_type === 'instant' ? 'Sofort' : `Verteilt (${pkg.leads_per_day}/Tag)`}
+                        {pkg.distribution_type === 'instant' ? 'Sofort' : `Verteilt (${pkg.leads_per_day}/Tag)`}
                       </span>
                     </td>
                     <td>CHF {Number(pkg.price || 0).toFixed(2)}</td>
@@ -224,16 +224,16 @@ export default function PaketePage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <label style={{ 
                     padding: '16px', 
-                    border: formData.delivery_type === 'instant' ? '2px solid #a78bfa' : '2px solid rgba(255,255,255,0.2)', 
+                    border: formData.distribution_type === 'instant' ? '2px solid #a78bfa' : '2px solid rgba(255,255,255,0.2)', 
                     borderRadius: '12px', 
                     cursor: 'pointer',
-                    background: formData.delivery_type === 'instant' ? 'rgba(167, 139, 250, 0.1)' : 'transparent'
+                    background: formData.distribution_type === 'instant' ? 'rgba(167, 139, 250, 0.1)' : 'transparent'
                   }}>
                     <input 
                       type="radio" 
-                      name="delivery_type" 
-                      checked={formData.delivery_type === 'instant'}
-                      onChange={() => setFormData({...formData, delivery_type: 'instant'})}
+                      name="distribution_type" 
+                      checked={formData.distribution_type === 'instant'}
+                      onChange={() => setFormData({...formData, distribution_type: 'instant'})}
                       style={{ display: 'none' }}
                     />
                     <div style={{ fontWeight: 600 }}>Sofort</div>
@@ -241,16 +241,16 @@ export default function PaketePage() {
                   </label>
                   <label style={{ 
                     padding: '16px', 
-                    border: formData.delivery_type === 'distributed' ? '2px solid #a78bfa' : '2px solid rgba(255,255,255,0.2)', 
+                    border: formData.distribution_type === 'distributed' ? '2px solid #a78bfa' : '2px solid rgba(255,255,255,0.2)', 
                     borderRadius: '12px', 
                     cursor: 'pointer',
-                    background: formData.delivery_type === 'distributed' ? 'rgba(167, 139, 250, 0.1)' : 'transparent'
+                    background: formData.distribution_type === 'distributed' ? 'rgba(167, 139, 250, 0.1)' : 'transparent'
                   }}>
                     <input 
                       type="radio" 
-                      name="delivery_type" 
-                      checked={formData.delivery_type === 'distributed'}
-                      onChange={() => setFormData({...formData, delivery_type: 'distributed'})}
+                      name="distribution_type" 
+                      checked={formData.distribution_type === 'distributed'}
+                      onChange={() => setFormData({...formData, distribution_type: 'distributed'})}
                       style={{ display: 'none' }}
                     />
                     <div style={{ fontWeight: 600 }}>Verteilt</div>
@@ -259,7 +259,7 @@ export default function PaketePage() {
                 </div>
               </div>
 
-              {formData.delivery_type === 'distributed' && (
+              {formData.distribution_type === 'distributed' && (
                 <div style={{ marginBottom: '16px' }}>
                   <label className="input-label">Leads pro Tag</label>
                   <input 
