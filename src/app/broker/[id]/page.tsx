@@ -69,13 +69,13 @@ export default function BrokerDetailPage() {
   }
 
   async function toggleBrokerStatus() {
-    const newStatus = !broker.is_active
-    const { error } = await supabase.from('brokers').update({ is_active: newStatus }).eq('id', params.id)
+    const newStatus = broker.status === 'active' ? 'inactive' : 'active'
+    const { error } = await supabase.from('brokers').update({ status: newStatus }).eq('id', params.id)
     if (error) {
       console.error('Toggle error:', error)
       alert('Fehler: ' + error.message)
     } else {
-      setBroker({ ...broker, is_active: newStatus })
+      setBroker({ ...broker, status: newStatus })
     }
   }
 
@@ -88,9 +88,9 @@ export default function BrokerDetailPage() {
   async function activateContract(contractId: string) {
     await supabase.from('contracts').update({ status: 'active' }).eq('id', contractId)
     // Auto-activate broker when contract is activated
-    if (!broker.is_active) {
-      await supabase.from('brokers').update({ is_active: true }).eq('id', params.id)
-      setBroker({ ...broker, is_active: true })
+    if (broker.status !== 'active') {
+      await supabase.from('brokers').update({ status: 'active' }).eq('id', params.id)
+      setBroker({ ...broker, status: 'active' })
     }
     loadData()
   }
@@ -146,8 +146,8 @@ export default function BrokerDetailPage() {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '8px' }}>
               <h1 style={{ fontSize: '28px', fontWeight: 700, margin: 0 }}>{broker.name}</h1>
-              <span className={`badge ${broker.is_active ? 'badge-success' : 'badge-danger'}`}>
-                {broker.is_active ? 'Aktiv' : 'Inaktiv'}
+              <span className={`badge ${broker.status === 'active' ? 'badge-success' : 'badge-danger'}`}>
+                {broker.status === 'active' ? 'Aktiv' : 'Inaktiv'}
               </span>
             </div>
             {broker.contact_person && (
@@ -159,7 +159,7 @@ export default function BrokerDetailPage() {
               <Edit size={16} /> Bearbeiten
             </button>
             <button onClick={toggleBrokerStatus} className="btn btn-secondary btn-sm">
-              <Power size={16} /> {broker.is_active ? 'Deaktivieren' : 'Aktivieren'}
+              <Power size={16} /> {broker.status === 'active' ? 'Deaktivieren' : 'Aktivieren'}
             </button>
           </div>
         </div>

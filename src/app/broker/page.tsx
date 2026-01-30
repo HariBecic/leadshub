@@ -43,7 +43,7 @@ export default function BrokerPage() {
 
   async function createBroker(e: React.FormEvent) {
     e.preventDefault()
-    await supabase.from('brokers').insert({ ...formData, is_active: true })
+    await supabase.from('brokers').insert({ ...formData, status: 'active' })
     setShowModal(false)
     setFormData({ name: '', contact_person: '', email: '', phone: '' })
     loadBrokers()
@@ -92,8 +92,8 @@ export default function BrokerPage() {
                     <h3 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '4px' }}>{broker.name}</h3>
                     <div style={{ fontSize: '14px', opacity: 0.7 }}>{broker.contact_person}</div>
                   </div>
-                  <span className={`badge ${broker.is_active ? 'badge-success' : 'badge-neutral'}`}>
-                    {broker.is_active ? 'Aktiv' : 'Inaktiv'}
+                  <span className={`badge ${broker.status === 'active' ? 'badge-success' : 'badge-neutral'}`}>
+                    {broker.status === 'active' ? 'Aktiv' : 'Inaktiv'}
                   </span>
                 </div>
                 
