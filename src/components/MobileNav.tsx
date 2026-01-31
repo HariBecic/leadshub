@@ -43,7 +43,7 @@ export default function MobileNav() {
 
   return (
     <>
-      {/* Mobile Header Bar - Heyflow Pill Style */}
+      {/* Mobile Header Bar - Heyflow Pill Form + Dark Glass */}
       <div className="mobile-header-wrapper">
         <div className="mobile-header-pill">
           <Link href="/" className="mobile-header-logo">
@@ -107,17 +107,18 @@ export default function MobileNav() {
           z-index: 100;
         }
 
-        /* Heyflow Pill Style Header */
+        /* Heyflow Pill Form + Dark Glass Design */
         .mobile-header-pill {
           display: flex;
           align-items: center;
           justify-content: space-between;
           padding: 12px 16px;
-          background: rgba(255, 255, 255, 0.95);
+          background: rgba(20, 20, 40, 0.85);
           backdrop-filter: blur(20px);
           -webkit-backdrop-filter: blur(20px);
+          border: 1px solid rgba(255, 255, 255, 0.1);
           border-radius: 16px;
-          box-shadow: 0 2px 20px rgba(0, 0, 0, 0.08);
+          box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
         }
 
         .mobile-header-logo img {
@@ -130,16 +131,16 @@ export default function MobileNav() {
           justify-content: center;
           width: 44px;
           height: 44px;
-          background: rgba(0, 0, 0, 0.04);
-          border: none;
-          color: #1a1a2e;
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          color: white;
           cursor: pointer;
           border-radius: 12px;
           transition: all 0.2s;
         }
 
         .mobile-menu-btn:hover {
-          background: rgba(0, 0, 0, 0.08);
+          background: rgba(255, 255, 255, 0.15);
         }
 
         /* Menu Overlay */
@@ -164,7 +165,7 @@ export default function MobileNav() {
           top: 12px;
           left: 12px;
           right: 12px;
-          background: rgba(20, 20, 40, 0.97);
+          background: rgba(20, 20, 40, 0.95);
           backdrop-filter: blur(30px);
           -webkit-backdrop-filter: blur(30px);
           border: 1px solid rgba(255, 255, 255, 0.1);
