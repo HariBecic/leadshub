@@ -43,18 +43,20 @@ export default function MobileNav() {
 
   return (
     <>
-      {/* Mobile Header Bar */}
-      <div className="mobile-header">
-        <Link href="/" className="mobile-header-logo">
-          <img src="/logo.png" alt="LeadsHub" />
-        </Link>
-        <button 
-          className="mobile-menu-btn" 
-          onClick={() => setIsOpen(true)}
-          aria-label="Menü öffnen"
-        >
-          <Menu size={24} />
-        </button>
+      {/* Mobile Header Bar - Heyflow Pill Style */}
+      <div className="mobile-header-wrapper">
+        <div className="mobile-header-pill">
+          <Link href="/" className="mobile-header-logo">
+            <img src="/logo.png" alt="LeadsHub" />
+          </Link>
+          <button 
+            className="mobile-menu-btn" 
+            onClick={() => setIsOpen(true)}
+            aria-label="Menü öffnen"
+          >
+            <Menu size={22} strokeWidth={2} />
+          </button>
+        </div>
       </div>
 
       {/* Full Screen Menu Overlay - Dark Glass Design */}
@@ -71,7 +73,7 @@ export default function MobileNav() {
                 onClick={() => setIsOpen(false)}
                 aria-label="Menü schliessen"
               >
-                <X size={24} />
+                <X size={22} strokeWidth={2} />
               </button>
             </div>
 
@@ -94,47 +96,57 @@ export default function MobileNav() {
       )}
 
       <style jsx global>{`
-        /* Mobile Header */
-        .mobile-header {
+        /* Mobile Header Wrapper */
+        .mobile-header-wrapper {
           display: none;
           position: fixed;
           top: 0;
           left: 0;
           right: 0;
-          height: 60px;
-          background: rgba(15, 15, 35, 0.95);
-          backdrop-filter: blur(20px);
-          -webkit-backdrop-filter: blur(20px);
-          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-          padding: 0 16px;
-          align-items: center;
-          justify-content: space-between;
+          padding: 12px;
           z-index: 100;
         }
 
+        /* Heyflow Pill Style Header */
+        .mobile-header-pill {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 12px 16px;
+          background: rgba(255, 255, 255, 0.95);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border-radius: 16px;
+          box-shadow: 0 2px 20px rgba(0, 0, 0, 0.08);
+        }
+
         .mobile-header-logo img {
-          height: 26px;
+          height: 24px;
         }
 
         .mobile-menu-btn {
-          background: rgba(255, 255, 255, 0.08);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          color: white;
-          padding: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 44px;
+          height: 44px;
+          background: rgba(0, 0, 0, 0.04);
+          border: none;
+          color: #1a1a2e;
           cursor: pointer;
           border-radius: 12px;
           transition: all 0.2s;
         }
 
         .mobile-menu-btn:hover {
-          background: rgba(255, 255, 255, 0.15);
+          background: rgba(0, 0, 0, 0.08);
         }
 
         /* Menu Overlay */
         .mobile-menu-overlay {
           position: fixed;
           inset: 0;
-          background: rgba(0, 0, 0, 0.6);
+          background: rgba(0, 0, 0, 0.5);
           backdrop-filter: blur(4px);
           -webkit-backdrop-filter: blur(4px);
           z-index: 1000;
@@ -152,7 +164,7 @@ export default function MobileNav() {
           top: 12px;
           left: 12px;
           right: 12px;
-          background: rgba(20, 20, 40, 0.95);
+          background: rgba(20, 20, 40, 0.97);
           backdrop-filter: blur(30px);
           -webkit-backdrop-filter: blur(30px);
           border: 1px solid rgba(255, 255, 255, 0.1);
@@ -178,19 +190,23 @@ export default function MobileNav() {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 20px 24px;
+          padding: 20px 20px;
           border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         }
 
         .mobile-menu-logo img {
-          height: 28px;
+          height: 26px;
         }
 
         .mobile-menu-close {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 44px;
+          height: 44px;
           background: rgba(255, 255, 255, 0.08);
           border: 1px solid rgba(255, 255, 255, 0.1);
           color: white;
-          padding: 10px;
           cursor: pointer;
           border-radius: 12px;
           transition: all 0.2s;
@@ -242,8 +258,8 @@ export default function MobileNav() {
 
         /* Responsive */
         @media (max-width: 768px) {
-          .mobile-header {
-            display: flex;
+          .mobile-header-wrapper {
+            display: block;
           }
 
           .sidebar {
@@ -252,12 +268,12 @@ export default function MobileNav() {
 
           .main-content {
             margin-left: 0 !important;
-            padding-top: 76px !important;
+            padding-top: 88px !important;
           }
         }
 
         @media (min-width: 769px) {
-          .mobile-header {
+          .mobile-header-wrapper {
             display: none !important;
           }
 
