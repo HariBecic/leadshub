@@ -132,7 +132,7 @@ export default function LeadsPage() {
   async function fetchMetaLeads() {
     setFetchingMeta(true)
     try {
-      const res = await fetch('/api/meta/leads/fetch', { method: 'POST' })
+      const res = await fetch('/api/meta/leads', { method: 'POST' })
       const data = await res.json()
       setImportStatus(`${data.imported || 0} neue Leads importiert`)
       loadData()
