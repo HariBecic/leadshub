@@ -20,10 +20,10 @@ export async function POST(request: NextRequest) {
 
     console.log(`Verify payment für Rechnung: ${invoice_number}`)
 
-    // Find invoice
+    // Find invoice with description field
     const { data: invoice, error: invoiceError } = await supabase
       .from('invoices')
-      .select('*, broker:brokers(*), package_id')
+      .select('*, broker:brokers(*)')
       .eq('invoice_number', invoice_number)
       .single()
 
@@ -41,10 +41,6 @@ export async function POST(request: NextRequest) {
         message: 'Zahlung bereits verarbeitet'
       })
     }
-
-    // Check if there's a Stripe payment link and it was used
-    // For now, we'll trust that if user reached success page, payment was successful
-    // In production, you'd verify with Stripe API
 
     // Mark invoice as paid
     const { error: updateError } = await supabase
@@ -68,46 +64,71 @@ export async function POST(request: NextRequest) {
     let leadsDelivered = 0
     let emailSent = false
 
-    console.log(`Invoice package_id: ${invoice.package_id}`)
+    // Parse lead_ids from invoice description
+    let leadIds: string[] = []
+    let packageName = ''
 
-    // Handle package
-    if (invoice.package_id) {
-      const { data: pkg, error: pkgError } = await supabase
+    if (invoice.description) {
+      try {
+        const descData = JSON.parse(invoice.description)
+        leadIds = descData.lead_ids || []
+        packageName = descData.package_name || ''
+        console.log(`Lead IDs aus Description: ${leadIds.length} Leads`)
+      } catch (e) {
+        console.log('Description ist kein JSON, überspringe')
+      }
+    }
+
+    // Handle package with reserved leads
+    if (invoice.package_id && leadIds.length > 0) {
+      const { data: pkg } = await supabase
         .from('lead_packages')
         .select('*')
         .eq('id', invoice.package_id)
         .single()
 
-      console.log(`Package gefunden: ${pkg?.id}, Error: ${pkgError?.message || 'none'}`)
-
       if (pkg) {
-        // Check for pre-reserved leads
-        const { data: pendingAssignments, error: assignError } = await supabase
-          .from('lead_assignments')
-          .select('*, lead:leads(*, category:lead_categories(*))')
-          .eq('package_id', pkg.id)
-          .eq('status', 'pending')
+        console.log(`Package gefunden: ${pkg.id}`)
 
-        console.log(`Pending assignments: ${pendingAssignments?.length || 0}, Error: ${assignError?.message || 'none'}`)
+        // Get the reserved leads
+        const { data: leads, error: leadsError } = await supabase
+          .from('leads')
+          .select('*, category:lead_categories(*)')
+          .in('id', leadIds)
 
-        if (pendingAssignments && pendingAssignments.length > 0) {
-          console.log(`${pendingAssignments.length} reservierte Leads gefunden`)
-        } else {
-          console.log('Keine pending assignments gefunden für package:', pkg.id)
+        if (leadsError) {
+          console.error('Fehler beim Laden der Leads:', leadsError)
         }
 
-        if (pendingAssignments && pendingAssignments.length > 0) {
+        if (leads && leads.length > 0) {
+          console.log(`${leads.length} reservierte Leads gefunden`)
 
-          // Update assignments
-          const assignmentIds = pendingAssignments.map(a => a.id)
-          await supabase
+          // Create lead assignments
+          const assignments = leads.map(lead => ({
+            lead_id: lead.id,
+            broker_id: invoice.broker_id,
+            pricing_model: 'package',
+            price_charged: leads.length > 0 ? pkg.price / leads.length : 0,
+            status: 'sent',
+            unlocked: true,
+            email_sent_at: new Date().toISOString()
+          }))
+
+          const { error: assignError } = await supabase
             .from('lead_assignments')
-            .update({
-              status: 'sent',
-              unlocked: true,
-              email_sent_at: new Date().toISOString()
-            })
-            .in('id', assignmentIds)
+            .insert(assignments)
+
+          if (assignError) {
+            console.error('Fehler beim Erstellen der Assignments:', assignError)
+          } else {
+            console.log(`${assignments.length} Assignments erstellt`)
+          }
+
+          // Update leads status to assigned
+          await supabase
+            .from('leads')
+            .update({ status: 'assigned' })
+            .in('id', leadIds)
 
           // Update package
           await supabase
@@ -115,23 +136,21 @@ export async function POST(request: NextRequest) {
             .update({
               status: 'completed',
               paid_at: new Date().toISOString(),
-              delivered_leads: pendingAssignments.length
+              delivered_leads: leads.length
             })
             .eq('id', pkg.id)
 
-          leadsDelivered = pendingAssignments.length
+          leadsDelivered = leads.length
 
-          // Send email
+          // Send email with leads
           if (invoice.broker?.email) {
-            const leads = pendingAssignments.map(a => a.lead).filter(Boolean)
-
             try {
               const emailHtml = subscriptionDeliveryEmail({
                 brokerName: invoice.broker.contact_person || invoice.broker.name,
-                packageName: pkg.name,
+                packageName: packageName || pkg.name,
                 leadsCount: leads.length,
                 leads: leads.map((lead: any) => ({
-                  name: `${lead.first_name || ''} ${lead.last_name || ''}`,
+                  name: `${lead.first_name || ''} ${lead.last_name || ''}`.trim(),
                   email: lead.email || '',
                   phone: lead.phone || '',
                   plz: lead.plz || '',
@@ -143,7 +162,7 @@ export async function POST(request: NextRequest) {
               await resend.emails.send({
                 from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
                 to: invoice.broker.email,
-                subject: `🎉 ${pkg.name} - ${leads.length} Leads verfügbar`,
+                subject: `🎉 ${packageName || pkg.name} - ${leads.length} Leads verfügbar`,
                 html: emailHtml
               })
               emailSent = true
@@ -152,8 +171,12 @@ export async function POST(request: NextRequest) {
               console.error('Email error:', e?.message || e)
             }
           }
+        } else {
+          console.log('Keine Leads gefunden für IDs:', leadIds)
         }
       }
+    } else {
+      console.log(`Keine Lead IDs in Description oder kein package_id. Package: ${invoice.package_id}, Leads: ${leadIds.length}`)
     }
 
     return NextResponse.json({
@@ -163,6 +186,7 @@ export async function POST(request: NextRequest) {
       debug: {
         has_package_id: !!invoice.package_id,
         package_id: invoice.package_id,
+        lead_ids_count: leadIds.length,
         broker_email: invoice.broker?.email || null
       }
     })
