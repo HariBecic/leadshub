@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
 
             try {
               await resend.emails.send({
-                from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
+                from: process.env.EMAIL_FROM || 'LeadsHub <noreply@leadshub.ch>',
                 to: invoice.broker.email,
                 subject: `🎉 ${pkg.name} - ${leads.length} Leads verfügbar`,
                 html: emailHtml
@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
 
               try {
                 await resend.emails.send({
-                  from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
+                  from: process.env.EMAIL_FROM || 'LeadsHub <noreply@leadshub.ch>',
                   to: invoice.broker.email,
                   subject: `✅ Zahlung erhalten - ${pkg.name} aktiviert`,
                   html: emailHtml
@@ -202,7 +202,7 @@ export async function POST(request: NextRequest) {
 
           try {
             await resend.emails.send({
-              from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
+              from: process.env.EMAIL_FROM || 'LeadsHub <noreply@leadshub.ch>',
               to: invoice.broker.email,
               subject: `🎯 Ihr ${categoryName}-Lead: ${lead.first_name} ${lead.last_name}`,
               html: emailHtml
@@ -298,7 +298,7 @@ async function deliverPackageLeads(pkg: any, broker: any) {
 
     try {
       await resend.emails.send({
-        from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
+        from: process.env.EMAIL_FROM || 'LeadsHub <noreply@leadshub.ch>',
         to: broker.email,
         subject: `📦 ${leads.length} Leads geliefert - ${pkg.name}`,
         html: emailHtml

@@ -305,7 +305,7 @@ async function deliverSingleLead(invoice: any) {
   `
 
   await resend.emails.send({
-    from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
+    from: process.env.EMAIL_FROM || 'LeadsHub <noreply@leadshub.ch>',
     to: invoice.broker.email,
     subject: `🎉 Ihr Lead ist da! - ${lead.category?.name || 'Lead'}`,
     html: emailHtml
@@ -541,7 +541,7 @@ async function sendPackageLeadsEmail(broker: any, leads: any[], packageName: str
 
   try {
     await resend.emails.send({
-      from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
+      from: process.env.EMAIL_FROM || 'LeadsHub <noreply@leadshub.ch>',
       to: broker.email,
       subject: `🎉 ${packageName} - ${leads.length} Leads verfügbar`,
       html: emailHtml

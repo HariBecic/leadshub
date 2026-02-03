@@ -27,7 +27,7 @@ async function sendLeadsEmail(broker: any, leads: any[], packageName: string) {
 
   try {
     await resend.emails.send({
-      from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
+      from: process.env.EMAIL_FROM || 'LeadsHub <noreply@leadshub.ch>',
       to: broker.email,
       subject: `📦 ${leads.length} neue Leads - ${packageName}`,
       html: emailHtml
