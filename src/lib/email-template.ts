@@ -51,7 +51,7 @@ export function emailTemplate(content: string, title: string = '') {
           <tr>
             <td style="padding: 24px 40px; text-align: center;">
               <p style="margin: 0; color: #9ca3af; font-size: 13px;">
-                LeadsHub GmbH · Sandäckerstrasse 10 · 8957 Spreitenbach
+                LeadsHub · Sandäckerstrasse 10 · 8957 Spreitenbach
               </p>
               <p style="margin: 8px 0 0; color: #d1d5db; font-size: 12px;">
                 © 2026 LeadsHub. Alle Rechte vorbehalten.
