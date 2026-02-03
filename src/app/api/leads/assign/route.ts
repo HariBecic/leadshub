@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 import { paymentGateEmail, revenueShareLeadEmail } from '@/lib/email-template'
+import { createPaymentLink } from '@/lib/stripe'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
@@ -78,10 +79,10 @@ export async function POST(request: NextRequest) {
         .from('invoices')
         .select('*', { count: 'exact', head: true })
         .gte('created_at', `${year}-01-01`)
-      
+
       const invoiceNumber = `${year}-${String((count || 0) + 1).padStart(4, '0')}`
 
-      await supabase.from('invoices').insert({
+      const { data: invoice } = await supabase.from('invoices').insert({
         invoice_number: invoiceNumber,
         broker_id,
         type: pricing_model,
@@ -90,9 +91,36 @@ export async function POST(request: NextRequest) {
         status: 'pending',
         due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         assignment_id: assignment.id
-      })
+      }).select().single()
 
       invoiceCreated = true
+
+      // Create Stripe Payment Link (if Stripe is configured)
+      let stripePaymentLink: string | undefined
+      if (process.env.STRIPE_SECRET_KEY && invoice && broker.email) {
+        try {
+          const result = await createPaymentLink({
+            invoiceId: invoice.id,
+            invoiceNumber: invoiceNumber,
+            amount: Number(price_charged) || 0,
+            description: `${categoryName}-Lead`,
+            customerEmail: broker.email,
+          })
+          stripePaymentLink = result.paymentLink
+
+          // Update invoice with Stripe link
+          await supabase
+            .from('invoices')
+            .update({
+              stripe_payment_link: result.paymentLink,
+              stripe_payment_id: result.paymentLinkId,
+            })
+            .eq('id', invoice.id)
+        } catch (stripeErr) {
+          console.error('Stripe Payment Link error:', stripeErr)
+          // Continue without Stripe - bank transfer remains as fallback
+        }
+      }
 
       // Send Payment Gate email (not lead details yet)
       if (broker.email) {
@@ -101,7 +129,8 @@ export async function POST(request: NextRequest) {
           category: categoryName,
           amount: Number(price_charged) || 0,
           invoiceNumber: invoiceNumber,
-          iban: IBAN
+          iban: IBAN,
+          stripePaymentLink: stripePaymentLink
         })
 
         try {

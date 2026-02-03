@@ -175,31 +175,42 @@ export function paymentGateEmail(data: {
   amount: number
   invoiceNumber: string
   iban: string
+  stripePaymentLink?: string
 }) {
+  // Stripe Payment Button (wenn Link vorhanden)
+  const stripeButtonHtml = data.stripePaymentLink ? `
+    ${spacer(16)}
+    ${button('Jetzt bezahlen', data.stripePaymentLink)}
+    <p style="margin: 8px 0 0; color: #9ca3af; font-size: 12px; text-align: center;">Sicher bezahlen mit Kreditkarte oder TWINT</p>
+    ${spacer(24)}
+    <p style="margin: 0; color: #d1d5db; font-size: 12px; text-align: center;">───── oder per Banküberweisung ─────</p>
+    ${spacer(16)}
+  ` : spacer(20)
+
   const content = `
     ${greeting(data.brokerName)}
     ${paragraph(`Ein neuer <strong>${data.category}-Lead</strong> ist für Sie verfügbar. Nach Zahlungseingang erhalten Sie die vollständigen Kontaktdaten.`)}
-    
+
     ${amountDisplay(data.amount.toFixed(2))}
-    
+
     <p style="margin: 0 0 20px; color: #6b7280; font-size: 13px; text-align: center;">Rechnung: ${data.invoiceNumber}</p>
-    
-    ${spacer(8)}
-    
+
+    ${stripeButtonHtml}
+
     ${highlightBox(`<strong>Hinweis:</strong> Die Lead-Daten werden Ihnen nach Zahlungseingang automatisch per E-Mail zugestellt.`, 'warning')}
-    
+
     ${spacer(20)}
-    
+
     ${sectionTitle('Zahlungsdetails')}
     ${infoBox([
       { label: 'IBAN', value: data.iban },
       { label: 'Empfänger', value: 'LeadsHub GmbH' },
       { label: 'Referenz', value: data.invoiceNumber }
     ])}
-    
+
     ${signature()}
   `
-  
+
   return emailTemplate(content, '📋 Neuer Lead verfügbar')
 }
 
