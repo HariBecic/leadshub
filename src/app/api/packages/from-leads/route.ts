@@ -124,6 +124,8 @@ export async function POST(request: NextRequest) {
 
     // Create Stripe Payment Link
     let stripePaymentLink = null
+    console.log(`Erstelle Stripe Payment Link für Preis: ${packagePrice}`)
+
     if (packagePrice > 0) {
       try {
         const { paymentLink, paymentLinkId } = await createPaymentLink({
@@ -135,6 +137,7 @@ export async function POST(request: NextRequest) {
         })
 
         stripePaymentLink = paymentLink
+        console.log(`Stripe Payment Link erstellt: ${paymentLink}`)
 
         // Save payment link to invoice
         await supabase
@@ -144,13 +147,17 @@ export async function POST(request: NextRequest) {
             stripe_payment_id: paymentLinkId
           })
           .eq('id', invoice.id)
-      } catch (stripeErr) {
-        console.error('Stripe error:', stripeErr)
+      } catch (stripeErr: any) {
+        console.error('Stripe error:', stripeErr?.message || stripeErr)
       }
+    } else {
+      console.log('Kein Stripe Link erstellt - Preis ist 0')
     }
 
     // Send email with Stripe payment button
     let emailSent = false
+    console.log(`Sende E-Mail an: ${broker.email}, Payment Link: ${stripePaymentLink ? 'vorhanden' : 'FEHLT'}`)
+
     if (broker.email) {
       const formattedDate = new Date().toLocaleDateString('de-CH')
       const formattedDueDate = dueDate.toLocaleDateString('de-CH')
@@ -260,12 +267,14 @@ export async function POST(request: NextRequest) {
       `
 
       try {
-        await resend.emails.send({
+        console.log('Sende E-Mail...')
+        const emailResult = await resend.emails.send({
           from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
           to: broker.email,
           subject: `📦 ${packageName} - ${totalLeads} Leads reserviert`,
           html: emailHtml
         })
+        console.log('E-Mail gesendet:', emailResult)
         emailSent = true
 
         await supabase
@@ -273,9 +282,13 @@ export async function POST(request: NextRequest) {
           .update({ status: 'sent', sent_at: new Date().toISOString() })
           .eq('id', invoice.id)
       } catch (e: any) {
-        console.error('Email error:', e)
+        console.error('Email error:', e?.message || e)
       }
+    } else {
+      console.log('Keine E-Mail gesendet - broker.email fehlt')
     }
+
+    console.log(`Paket erstellt: ${pkg.id}, E-Mail gesendet: ${emailSent}`)
 
     return NextResponse.json({
       success: true,
