@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     // In production, you'd verify with Stripe API
 
     // Mark invoice as paid
-    await supabase
+    const { error: updateError } = await supabase
       .from('invoices')
       .update({
         status: 'paid',
@@ -55,6 +55,14 @@ export async function POST(request: NextRequest) {
         payment_method: 'stripe'
       })
       .eq('id', invoice.id)
+
+    if (updateError) {
+      console.error('Fehler beim Update der Rechnung:', updateError)
+      return NextResponse.json({
+        error: 'Rechnung konnte nicht aktualisiert werden',
+        details: updateError.message
+      }, { status: 500 })
+    }
 
     console.log(`Rechnung ${invoice_number} als bezahlt markiert`)
 

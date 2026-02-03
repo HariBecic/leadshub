@@ -15,27 +15,35 @@ function PaymentSuccessContent() {
     email_sent?: boolean
     already_paid?: boolean
     error?: string
+    details?: string
   } | null>(null)
 
   useEffect(() => {
     if (invoiceNumber) {
+      console.log(`Verifying payment for invoice: ${invoiceNumber}`)
       // Automatically verify and process payment
       fetch('/api/stripe/verify-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ invoice_number: invoiceNumber })
       })
-        .then(res => res.json())
+        .then(res => {
+          console.log('Response status:', res.status)
+          return res.json()
+        })
         .then(data => {
+          console.log('Verify payment response:', data)
           setResult(data)
           setProcessing(false)
         })
         .catch(err => {
           console.error('Error:', err)
-          setResult({ error: 'Verarbeitung fehlgeschlagen' })
+          setResult({ error: 'Verarbeitung fehlgeschlagen: ' + err.message })
           setProcessing(false)
         })
     } else {
+      console.log('No invoice number in URL')
+      setResult({ error: 'Keine Rechnungsnummer in URL' })
       setProcessing(false)
     }
   }, [invoiceNumber])
@@ -110,8 +118,10 @@ function PaymentSuccessContent() {
             {!processing && result?.error && (
               <div className="bg-red-500/20 border border-red-500/30 rounded-xl p-4 mb-6">
                 <p className="text-red-200 text-sm">
-                  <strong>Hinweis</strong><br />
-                  {result.error}. Bitte kontaktieren Sie uns falls nötig.
+                  <strong>Fehler</strong><br />
+                  {result.error}
+                  {result.details && <><br /><span className="text-red-300/70 text-xs">{result.details}</span></>}
+                  <br /><br />Bitte kontaktieren Sie uns falls nötig.
                 </p>
               </div>
             )}
