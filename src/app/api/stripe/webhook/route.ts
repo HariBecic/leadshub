@@ -1,0 +1,288 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+import { verifyWebhookSignature, getStripe } from '@/lib/stripe'
+import { Resend } from 'resend'
+import Stripe from 'stripe'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+const supabase = createClient(supabaseUrl, supabaseKey)
+const resend = new Resend(process.env.RESEND_API_KEY)
+
+// Hilfsfunktion: Label formatieren
+function formatLabel(key: string): string {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, l => l.toUpperCase())
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.text()
+    const signature = request.headers.get('stripe-signature')
+
+    if (!signature) {
+      return NextResponse.json({ error: 'Keine Stripe-Signatur' }, { status: 400 })
+    }
+
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+    if (!webhookSecret) {
+      console.error('STRIPE_WEBHOOK_SECRET nicht konfiguriert')
+      return NextResponse.json({ error: 'Webhook nicht konfiguriert' }, { status: 500 })
+    }
+
+    // Webhook-Event verifizieren
+    let event: Stripe.Event
+    try {
+      event = verifyWebhookSignature(body, signature, webhookSecret)
+    } catch (err) {
+      console.error('Webhook Signatur ungültig:', err)
+      return NextResponse.json({ error: 'Ungültige Signatur' }, { status: 400 })
+    }
+
+    // Nur checkout.session.completed und payment_intent.succeeded behandeln
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object as Stripe.Checkout.Session
+      await handlePaymentSuccess(session.metadata?.invoice_id, session.id)
+    } else if (event.type === 'payment_intent.succeeded') {
+      const paymentIntent = event.data.object as Stripe.PaymentIntent
+      // Bei Payment Links kommt das Event über payment_intent
+      if (paymentIntent.metadata?.invoice_id) {
+        await handlePaymentSuccess(paymentIntent.metadata.invoice_id, paymentIntent.id)
+      }
+    }
+
+    return NextResponse.json({ received: true })
+
+  } catch (err) {
+    console.error('Webhook Error:', err)
+    return NextResponse.json({ error: 'Webhook Fehler' }, { status: 500 })
+  }
+}
+
+async function handlePaymentSuccess(invoiceId: string | undefined, stripePaymentId: string) {
+  if (!invoiceId) {
+    console.error('Keine Invoice ID im Payment Event')
+    return
+  }
+
+  // Rechnung mit allen Relations laden
+  const { data: invoice, error: invoiceError } = await supabase
+    .from('invoices')
+    .select('*, broker:brokers(*)')
+    .eq('id', invoiceId)
+    .single()
+
+  if (invoiceError || !invoice) {
+    console.error('Rechnung nicht gefunden:', invoiceId)
+    return
+  }
+
+  // Bereits bezahlt? Dann nichts tun
+  if (invoice.status === 'paid') {
+    console.log('Rechnung bereits bezahlt:', invoice.invoice_number)
+    return
+  }
+
+  // Rechnung als bezahlt markieren
+  await supabase
+    .from('invoices')
+    .update({
+      status: 'paid',
+      paid_at: new Date().toISOString(),
+      payment_method: 'stripe',
+      stripe_payment_id: stripePaymentId,
+    })
+    .eq('id', invoiceId)
+
+  console.log(`Rechnung ${invoice.invoice_number} als bezahlt markiert (Stripe: ${stripePaymentId})`)
+
+  // Je nach Rechnungstyp: Lead(s) freigeben
+  if (invoice.type === 'single' || invoice.type === 'fixed') {
+    await deliverSingleLead(invoice)
+  } else if (invoice.type === 'package') {
+    await activatePackage(invoice)
+  }
+}
+
+// Einzelnen Lead freigeben (fixed/single)
+async function deliverSingleLead(invoice: any) {
+  // Lead Assignment finden
+  const { data: assignment, error: assignmentError } = await supabase
+    .from('lead_assignments')
+    .select('*, lead:leads(*, category:lead_categories(*))')
+    .eq('invoice_id', invoice.id)
+    .single()
+
+  if (assignmentError || !assignment) {
+    console.error('Keine Lead-Zuweisung gefunden für Rechnung:', invoice.id)
+    return
+  }
+
+  // Assignment auf "sent" setzen
+  await supabase
+    .from('lead_assignments')
+    .update({ status: 'sent', email_sent_at: new Date().toISOString() })
+    .eq('id', assignment.id)
+
+  // Lead-Status aktualisieren
+  await supabase
+    .from('leads')
+    .update({ status: 'assigned' })
+    .eq('id', assignment.lead_id)
+
+  const lead = assignment.lead
+  if (!lead || !invoice.broker?.email) return
+
+  // E-Mail mit Lead-Daten senden
+  const leadName = `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Unbekannt'
+
+  // Extra-Daten HTML erstellen
+  let extraDataHtml = ''
+  if (lead.extra_data && Object.keys(lead.extra_data).length > 0) {
+    const extraItems = Object.entries(lead.extra_data)
+      .filter(([key]) => !key.startsWith('meta_'))
+      .filter(([_, value]) => value && String(value).trim() !== '')
+      .map(([key, value]) => `
+        <tr>
+          <td style="padding:12px 16px;color:rgba(255,255,255,0.6);font-size:14px;border-bottom:1px solid rgba(255,255,255,0.1);">${formatLabel(key)}</td>
+          <td style="padding:12px 16px;color:white;font-weight:500;border-bottom:1px solid rgba(255,255,255,0.1);">${String(value)}</td>
+        </tr>
+      `).join('')
+
+    if (extraItems) {
+      extraDataHtml = `
+        <div style="margin-top:24px;">
+          <div style="color:rgba(255,255,255,0.5);font-size:12px;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">Zusatzangaben</div>
+          <div style="background:rgba(255,255,255,0.08);border-radius:12px;overflow:hidden;">
+            <table style="width:100%;border-collapse:collapse;">
+              ${extraItems}
+            </table>
+          </div>
+        </div>
+      `
+    }
+  }
+
+  const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;font-family:system-ui,-apple-system,sans-serif;background:linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#1e1b4b 100%);min-height:100vh;">
+  <div style="max-width:600px;margin:0 auto;padding:40px 20px;">
+
+    <div style="text-align:center;margin-bottom:32px;">
+      <img src="https://leadshub2.vercel.app/logo.png" alt="LeadsHub" style="height:48px;width:auto;" />
+    </div>
+
+    <div style="background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);border-radius:24px;border:1px solid rgba(255,255,255,0.2);overflow:hidden;">
+
+      <div style="background:linear-gradient(135deg,rgba(34,197,94,0.3) 0%,rgba(22,163,74,0.2) 100%);padding:32px;text-align:center;border-bottom:1px solid rgba(255,255,255,0.1);">
+        <div style="font-size:48px;margin-bottom:16px;">🎉</div>
+        <h1 style="margin:0;font-size:24px;font-weight:700;color:white;">Zahlung erhalten!</h1>
+        <p style="margin:8px 0 0;color:rgba(255,255,255,0.7);">Ihr Lead ist jetzt verfügbar</p>
+      </div>
+
+      <div style="padding:32px;">
+        <p style="color:rgba(255,255,255,0.9);font-size:16px;line-height:1.6;margin:0 0 24px;">
+          Hallo ${invoice.broker.contact_person || invoice.broker.name},<br><br>
+          Vielen Dank für Ihre Zahlung! Hier sind die Kontaktdaten Ihres <strong>${lead.category?.name || 'Leads'}</strong>:
+        </p>
+
+        <div style="color:rgba(255,255,255,0.5);font-size:12px;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">Kontaktdaten</div>
+        <div style="background:rgba(255,255,255,0.08);border-radius:12px;overflow:hidden;">
+          <table style="width:100%;border-collapse:collapse;">
+            <tr>
+              <td style="padding:12px 16px;color:rgba(255,255,255,0.6);font-size:14px;border-bottom:1px solid rgba(255,255,255,0.1);">Name</td>
+              <td style="padding:12px 16px;color:white;font-weight:500;border-bottom:1px solid rgba(255,255,255,0.1);">${leadName}</td>
+            </tr>
+            <tr>
+              <td style="padding:12px 16px;color:rgba(255,255,255,0.6);font-size:14px;border-bottom:1px solid rgba(255,255,255,0.1);">E-Mail</td>
+              <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.1);"><a href="mailto:${lead.email}" style="color:#a78bfa;text-decoration:none;">${lead.email || '-'}</a></td>
+            </tr>
+            <tr>
+              <td style="padding:12px 16px;color:rgba(255,255,255,0.6);font-size:14px;border-bottom:1px solid rgba(255,255,255,0.1);">Telefon</td>
+              <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.1);"><a href="tel:${lead.phone}" style="color:#a78bfa;text-decoration:none;">${lead.phone || '-'}</a></td>
+            </tr>
+            <tr>
+              <td style="padding:12px 16px;color:rgba(255,255,255,0.6);font-size:14px;">PLZ / Ort</td>
+              <td style="padding:12px 16px;color:white;font-weight:500;">${lead.plz || ''} ${lead.ort || ''}</td>
+            </tr>
+          </table>
+        </div>
+
+        ${extraDataHtml}
+
+        <div style="margin-top:24px;background:rgba(34,197,94,0.2);border-radius:12px;padding:16px;border:1px solid rgba(34,197,94,0.3);">
+          <p style="margin:0;color:#86efac;font-size:14px;">
+            <strong>Tipp:</strong> Kontaktieren Sie den Lead möglichst innerhalb von 24 Stunden für die beste Conversion-Rate.
+          </p>
+        </div>
+      </div>
+
+      <div style="background:rgba(0,0,0,0.2);padding:24px 32px;border-top:1px solid rgba(255,255,255,0.1);">
+        <p style="margin:0;color:rgba(255,255,255,0.6);font-size:14px;">
+          Freundliche Grüsse<br>
+          <strong style="color:white;">LeadsHub</strong>
+        </p>
+      </div>
+
+    </div>
+
+  </div>
+</body>
+</html>
+  `
+
+  await resend.emails.send({
+    from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
+    to: invoice.broker.email,
+    subject: `🎉 Ihr Lead ist da! - ${lead.category?.name || 'Lead'}`,
+    html: emailHtml
+  })
+
+  console.log(`Lead-E-Mail gesendet an ${invoice.broker.email}`)
+}
+
+// Lead-Paket aktivieren
+async function activatePackage(invoice: any) {
+  // Paket finden
+  const { data: pkg, error: pkgError } = await supabase
+    .from('lead_packages')
+    .select('*')
+    .eq('invoice_id', invoice.id)
+    .single()
+
+  if (pkgError || !pkg) {
+    console.error('Kein Paket gefunden für Rechnung:', invoice.id)
+    return
+  }
+
+  // Paket aktivieren
+  await supabase
+    .from('lead_packages')
+    .update({
+      status: 'active',
+      activated_at: new Date().toISOString()
+    })
+    .eq('id', pkg.id)
+
+  console.log(`Paket ${pkg.name} aktiviert für Broker ${invoice.broker?.name}`)
+
+  // Bei "instant" Delivery: Leads sofort liefern via bestehenden Endpoint
+  if (pkg.distribution_type === 'instant') {
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      await fetch(`${baseUrl}/api/packages/deliver`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ package_id: pkg.id })
+      })
+    } catch (err) {
+      console.error('Fehler beim Instant-Delivery:', err)
+    }
+  }
+}

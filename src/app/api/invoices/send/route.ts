@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
+import { createPaymentLink } from '@/lib/stripe'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
@@ -40,6 +41,33 @@ export async function POST(request: NextRequest) {
 
     const formattedDate = new Date(invoice.created_at).toLocaleDateString('de-CH')
     const formattedDueDate = invoice.due_date ? new Date(invoice.due_date).toLocaleDateString('de-CH') : '30 Tage'
+
+    // Stripe Payment Link erstellen (falls noch nicht vorhanden)
+    let stripePaymentLink = invoice.stripe_payment_link
+    if (!stripePaymentLink && process.env.STRIPE_SECRET_KEY) {
+      try {
+        const result = await createPaymentLink({
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.invoice_number,
+          amount: Number(invoice.amount),
+          description: typeLabels[invoice.type] || `Rechnung ${invoice.invoice_number}`,
+          customerEmail: invoice.broker.email,
+        })
+        stripePaymentLink = result.paymentLink
+
+        // In DB speichern
+        await supabase
+          .from('invoices')
+          .update({
+            stripe_payment_link: result.paymentLink,
+            stripe_payment_id: result.paymentLinkId,
+          })
+          .eq('id', invoice_id)
+      } catch (stripeErr) {
+        console.error('Stripe Payment Link konnte nicht erstellt werden:', stripeErr)
+        // Weiter ohne Stripe - Banküberweisung bleibt als Fallback
+      }
+    }
 
     const emailHtml = `
 <!DOCTYPE html>
@@ -96,7 +124,21 @@ export async function POST(request: NextRequest) {
           <div style="color:rgba(255,255,255,0.7);font-size:14px;margin-bottom:8px;">Zu zahlen</div>
           <div style="color:white;font-size:42px;font-weight:700;">CHF ${Number(invoice.amount).toFixed(2)}</div>
         </div>
-        
+
+        ${stripePaymentLink ? `
+        <!-- Stripe Payment Button -->
+        <div style="text-align:center;margin-bottom:24px;">
+          <a href="${stripePaymentLink}" style="display:inline-block;background:linear-gradient(135deg,#8b5cf6 0%,#a855f7 100%);color:white;text-decoration:none;padding:18px 48px;border-radius:12px;font-weight:700;font-size:18px;box-shadow:0 4px 14px rgba(139,92,246,0.4);">
+            Jetzt bezahlen
+          </a>
+          <p style="color:rgba(255,255,255,0.5);font-size:13px;margin:12px 0 0;">Sicher bezahlen mit Kreditkarte oder TWINT</p>
+        </div>
+
+        <div style="text-align:center;margin-bottom:24px;">
+          <span style="color:rgba(255,255,255,0.4);font-size:13px;">─────── oder per Banküberweisung ───────</span>
+        </div>
+        ` : ''}
+
         ${invoice.description ? `
         <div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:16px;margin-bottom:24px;">
           <div style="color:rgba(255,255,255,0.5);font-size:12px;margin-bottom:4px;">Beschreibung</div>
