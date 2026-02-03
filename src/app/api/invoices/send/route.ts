@@ -165,7 +165,7 @@ export async function POST(request: NextRequest) {
     `
 
     await resend.emails.send({
-      from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
+      from: process.env.EMAIL_FROM || 'LeadsHub <noreply@leadshub.ch>',
       to: invoice.broker.email,
       subject: `Rechnung ${invoice.invoice_number} - CHF ${Number(invoice.amount).toFixed(2)}`,
       html: emailHtml

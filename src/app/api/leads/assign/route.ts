@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
           })
 
           await resend.emails.send({
-            from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
+            from: process.env.EMAIL_FROM || 'LeadsHub <noreply@leadshub.ch>',
             to: broker.email,
             subject: `Neuer ${categoryName}-Lead verfügbar - CHF ${Number(price_charged).toFixed(2)}`,
             html: emailHtml
@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
 
         try {
           await resend.emails.send({
-            from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
+            from: process.env.EMAIL_FROM || 'LeadsHub <noreply@leadshub.ch>',
             to: broker.email,
             subject: `Neuer ${categoryName}-Lead: ${lead.first_name} ${lead.last_name}`,
             html: emailHtml

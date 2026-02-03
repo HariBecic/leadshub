@@ -259,7 +259,7 @@ export async function POST(request: NextRequest) {
       try {
         console.log('Sende E-Mail...')
         const emailResult = await resend.emails.send({
-          from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
+          from: process.env.EMAIL_FROM || 'LeadsHub <noreply@leadshub.ch>',
           to: broker.email,
           subject: `📦 ${packageName} - ${totalLeads} Leads reserviert`,
           html: emailHtml

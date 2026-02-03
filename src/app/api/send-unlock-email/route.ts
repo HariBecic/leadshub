@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
 
   try {
     await resend.emails.send({
-      from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
+      from: process.env.EMAIL_FROM || 'LeadsHub <noreply@leadshub.ch>',
       to: broker.email,
       subject: `Lead freigeschaltet: ${lead.first_name} ${lead.last_name}`,
       html: emailHtml

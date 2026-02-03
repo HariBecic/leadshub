@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
               })
 
               await resend.emails.send({
-                from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
+                from: process.env.EMAIL_FROM || 'LeadsHub <noreply@leadshub.ch>',
                 to: invoice.broker.email,
                 subject: `🎉 ${packageName || pkg.name} - ${leads.length} Leads verfügbar`,
                 html: emailHtml
