@@ -63,29 +63,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Package error', details: pkgError.message }, { status: 500 })
     }
 
-    // Create lead assignments with status='pending' (reserved for this package)
-    const assignments = lead_ids.map((lead_id: string) => ({
-      lead_id,
-      broker_id,
-      package_id: pkg.id,
-      pricing_model: 'package',
-      price_charged: totalLeads > 0 ? packagePrice / totalLeads : 0,
-      status: 'pending', // Will be changed to 'sent' after payment
-      unlocked: false
-    }))
-
-    const { error: assignmentError } = await supabase.from('lead_assignments').insert(assignments)
-    if (assignmentError) {
-      console.error('Fehler beim Erstellen der Assignments:', assignmentError)
-      return NextResponse.json({ error: 'Fehler beim Reservieren der Leads', details: assignmentError.message }, { status: 500 })
-    }
-    console.log(`${assignments.length} Assignments erstellt für Package ${pkg.id}`)
-
-    // Mark leads as reserved (using 'assigned' status to prevent double-booking)
+    // Mark leads as reserved (will be assigned after payment)
     await supabase
       .from('leads')
-      .update({ status: 'assigned' })
+      .update({ status: 'reserved' })
       .in('id', lead_ids)
+    console.log(`${lead_ids.length} Leads als reserviert markiert`)
 
     // Generate invoice number
     const year = new Date().getFullYear()
@@ -97,7 +80,7 @@ export async function POST(request: NextRequest) {
     const invoiceNumber = `${year}-${String((count || 0) + 1).padStart(4, '0')}`
     const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
 
-    // Create invoice
+    // Create invoice - store lead_ids in description as JSON for later retrieval
     const { data: invoice, error: invError } = await supabase
       .from('invoices')
       .insert({
@@ -107,7 +90,8 @@ export async function POST(request: NextRequest) {
         amount: packagePrice,
         status: 'pending',
         due_date: dueDate.toISOString(),
-        package_id: pkg.id
+        package_id: pkg.id,
+        description: JSON.stringify({ lead_ids: lead_ids, package_name: packageName })
       })
       .select()
       .single()
