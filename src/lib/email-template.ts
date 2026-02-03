@@ -174,19 +174,8 @@ export function paymentGateEmail(data: {
   category: string
   amount: number
   invoiceNumber: string
-  iban: string
-  stripePaymentLink?: string
+  stripePaymentLink: string
 }) {
-  // Stripe Payment Button (wenn Link vorhanden)
-  const stripeButtonHtml = data.stripePaymentLink ? `
-    ${spacer(16)}
-    ${button('Jetzt bezahlen', data.stripePaymentLink)}
-    <p style="margin: 8px 0 0; color: #9ca3af; font-size: 12px; text-align: center;">Sicher bezahlen mit Kreditkarte oder TWINT</p>
-    ${spacer(24)}
-    <p style="margin: 0; color: #d1d5db; font-size: 12px; text-align: center;">───── oder per Banküberweisung ─────</p>
-    ${spacer(16)}
-  ` : spacer(20)
-
   const content = `
     ${greeting(data.brokerName)}
     ${paragraph(`Ein neuer <strong>${data.category}-Lead</strong> ist für Sie verfügbar. Nach Zahlungseingang erhalten Sie die vollständigen Kontaktdaten.`)}
@@ -195,18 +184,14 @@ export function paymentGateEmail(data: {
 
     <p style="margin: 0 0 20px; color: #6b7280; font-size: 13px; text-align: center;">Rechnung: ${data.invoiceNumber}</p>
 
-    ${stripeButtonHtml}
+    ${spacer(8)}
 
-    ${highlightBox(`<strong>Hinweis:</strong> Die Lead-Daten werden Ihnen nach Zahlungseingang automatisch per E-Mail zugestellt.`, 'warning')}
+    ${button('Jetzt bezahlen', data.stripePaymentLink)}
+    <p style="margin: 12px 0 0; color: #9ca3af; font-size: 12px; text-align: center;">Sicher bezahlen mit Kreditkarte oder TWINT</p>
 
-    ${spacer(20)}
+    ${spacer(24)}
 
-    ${sectionTitle('Zahlungsdetails')}
-    ${infoBox([
-      { label: 'IBAN', value: data.iban },
-      { label: 'Empfänger', value: 'LeadsHub GmbH' },
-      { label: 'Referenz', value: data.invoiceNumber }
-    ])}
+    ${highlightBox(`<strong>Hinweis:</strong> Die Lead-Daten werden Ihnen nach Zahlungseingang automatisch per E-Mail zugestellt.`, 'info')}
 
     ${signature()}
   `

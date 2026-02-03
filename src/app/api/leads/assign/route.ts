@@ -9,9 +9,6 @@ const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_
 const supabase = createClient(supabaseUrl, supabaseKey)
 const resend = new Resend(process.env.RESEND_API_KEY)
 
-// IBAN für Zahlungen
-const IBAN = process.env.IBAN || 'CH00 0000 0000 0000 0'
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -95,9 +92,8 @@ export async function POST(request: NextRequest) {
 
       invoiceCreated = true
 
-      // Create Stripe Payment Link (if Stripe is configured)
-      let stripePaymentLink: string | undefined
-      if (process.env.STRIPE_SECRET_KEY && invoice && broker.email) {
+      // Create Stripe Payment Link
+      if (invoice && broker.email) {
         try {
           const result = await createPaymentLink({
             invoiceId: invoice.id,
@@ -106,7 +102,6 @@ export async function POST(request: NextRequest) {
             description: `${categoryName}-Lead`,
             customerEmail: broker.email,
           })
-          stripePaymentLink = result.paymentLink
 
           // Update invoice with Stripe link
           await supabase
@@ -116,24 +111,16 @@ export async function POST(request: NextRequest) {
               stripe_payment_id: result.paymentLinkId,
             })
             .eq('id', invoice.id)
-        } catch (stripeErr) {
-          console.error('Stripe Payment Link error:', stripeErr)
-          // Continue without Stripe - bank transfer remains as fallback
-        }
-      }
 
-      // Send Payment Gate email (not lead details yet)
-      if (broker.email) {
-        const emailHtml = paymentGateEmail({
-          brokerName: broker.contact_person || broker.name,
-          category: categoryName,
-          amount: Number(price_charged) || 0,
-          invoiceNumber: invoiceNumber,
-          iban: IBAN,
-          stripePaymentLink: stripePaymentLink
-        })
+          // Send Payment Gate email with Stripe link
+          const emailHtml = paymentGateEmail({
+            brokerName: broker.contact_person || broker.name,
+            category: categoryName,
+            amount: Number(price_charged) || 0,
+            invoiceNumber: invoiceNumber,
+            stripePaymentLink: result.paymentLink
+          })
 
-        try {
           await resend.emails.send({
             from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
             to: broker.email,
@@ -141,8 +128,9 @@ export async function POST(request: NextRequest) {
             html: emailHtml
           })
           emailSent = true
-        } catch (e) {
-          console.error('Email error:', e)
+        } catch (err) {
+          console.error('Stripe/Email error:', err)
+          return NextResponse.json({ error: 'Stripe Payment Link konnte nicht erstellt werden' }, { status: 500 })
         }
       }
     } else {
