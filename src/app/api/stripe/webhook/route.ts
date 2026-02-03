@@ -66,10 +66,10 @@ async function handlePaymentSuccess(invoiceId: string | undefined, stripePayment
     return
   }
 
-  // Rechnung mit allen Relations laden
+  // Rechnung mit allen Relations laden (inkl. assignment_id für Lead-Delivery)
   const { data: invoice, error: invoiceError } = await supabase
     .from('invoices')
-    .select('*, broker:brokers(*)')
+    .select('*, broker:brokers(*), assignment_id')
     .eq('id', invoiceId)
     .single()
 
@@ -107,15 +107,20 @@ async function handlePaymentSuccess(invoiceId: string | undefined, stripePayment
 
 // Einzelnen Lead freigeben (fixed/single)
 async function deliverSingleLead(invoice: any) {
-  // Lead Assignment finden
+  // Lead Assignment finden (über assignment_id in der Invoice)
+  if (!invoice.assignment_id) {
+    console.error('Keine assignment_id in Rechnung:', invoice.id)
+    return
+  }
+
   const { data: assignment, error: assignmentError } = await supabase
     .from('lead_assignments')
     .select('*, lead:leads(*, category:lead_categories(*))')
-    .eq('invoice_id', invoice.id)
+    .eq('id', invoice.assignment_id)
     .single()
 
   if (assignmentError || !assignment) {
-    console.error('Keine Lead-Zuweisung gefunden für Rechnung:', invoice.id)
+    console.error('Keine Lead-Zuweisung gefunden für assignment_id:', invoice.assignment_id)
     return
   }
 
