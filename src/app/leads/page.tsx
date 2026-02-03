@@ -307,7 +307,18 @@ export default function LeadsPage() {
         return
       }
 
-      setImportStatus(`Paket "${data.package.name}" erstellt mit ${leadIds.length} Leads`)
+      // Show detailed status
+      let statusMsg = `Paket "${data.package.name}" erstellt mit ${leadIds.length} Leads`
+      if (data.email_sent) {
+        statusMsg += ' ✓ E-Mail gesendet an ' + data.broker_email
+      } else {
+        statusMsg += ' ⚠️ E-Mail NICHT gesendet'
+        if (data.email_error) statusMsg += ` (${data.email_error})`
+        else if (!data.broker_email) statusMsg += ' (Broker hat keine E-Mail!)'
+        else if (!data.payment_link) statusMsg += ' (kein Payment Link)'
+      }
+      console.log('Package creation response:', data)
+      setImportStatus(statusMsg)
       setSelectedLeads(new Set())
       setShowCreatePackageModal(false)
       setPackageForm({ name: '', broker_id: '', price: '', distribution_type: 'instant', leads_per_day: 2 })

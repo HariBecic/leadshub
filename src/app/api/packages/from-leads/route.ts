@@ -156,6 +156,7 @@ export async function POST(request: NextRequest) {
 
     // Send email with Stripe payment button
     let emailSent = false
+    let emailError: string | null = null
     console.log(`Sende E-Mail an: ${broker.email}, Payment Link: ${stripePaymentLink ? 'vorhanden' : 'FEHLT'}`)
 
     if (broker.email) {
@@ -282,13 +283,15 @@ export async function POST(request: NextRequest) {
           .update({ status: 'sent', sent_at: new Date().toISOString() })
           .eq('id', invoice.id)
       } catch (e: any) {
-        console.error('Email error:', e?.message || e)
+        emailError = e?.message || String(e)
+        console.error('Email error:', emailError)
       }
     } else {
+      emailError = 'Broker hat keine E-Mail-Adresse'
       console.log('Keine E-Mail gesendet - broker.email fehlt')
     }
 
-    console.log(`Paket erstellt: ${pkg.id}, E-Mail gesendet: ${emailSent}`)
+    console.log(`Paket erstellt: ${pkg.id}, E-Mail gesendet: ${emailSent}, Broker E-Mail: ${broker.email || 'KEINE'}`)
 
     return NextResponse.json({
       success: true,
@@ -296,7 +299,14 @@ export async function POST(request: NextRequest) {
       invoice: invoice,
       payment_link: stripePaymentLink,
       reserved_leads: totalLeads,
-      email_sent: emailSent
+      email_sent: emailSent,
+      email_error: emailError,
+      broker_email: broker.email || null,
+      debug: {
+        price: packagePrice,
+        broker_has_email: !!broker.email,
+        stripe_link_created: !!stripePaymentLink
+      }
     })
 
   } catch (err: any) {
