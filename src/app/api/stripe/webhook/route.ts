@@ -40,9 +40,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Ungültige Signatur' }, { status: 400 })
     }
 
+    console.log(`Stripe Webhook Event empfangen: ${event.type}`)
+
     // Nur checkout.session.completed und payment_intent.succeeded behandeln
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session
+
+      console.log('Checkout Session Details:', {
+        id: session.id,
+        payment_link: session.payment_link,
+        metadata: session.metadata,
+        payment_status: session.payment_status
+      })
 
       // Bei Payment Links: Metadata kann in Session oder Payment Link sein
       let invoiceId = session.metadata?.invoice_id
@@ -53,20 +62,29 @@ export async function POST(request: NextRequest) {
           ? session.payment_link
           : session.payment_link.id
 
+        console.log(`Suche Invoice mit stripe_payment_id: ${paymentLinkId}`)
+
         // Invoice über stripe_payment_id (Payment Link ID) finden
-        const { data: invoiceFromDb } = await supabase
+        const { data: invoiceFromDb, error: dbError } = await supabase
           .from('invoices')
           .select('id')
           .eq('stripe_payment_id', paymentLinkId)
           .single()
 
+        if (dbError) {
+          console.error('DB Fehler beim Suchen der Invoice:', dbError)
+        }
+
         if (invoiceFromDb) {
           invoiceId = invoiceFromDb.id
           console.log(`Invoice ID via Payment Link gefunden: ${invoiceId}`)
+        } else {
+          console.log('Keine Invoice mit dieser Payment Link ID gefunden')
         }
       }
 
       if (invoiceId) {
+        console.log(`Verarbeite Zahlung für Invoice: ${invoiceId}`)
         await handlePaymentSuccess(invoiceId, session.id)
       } else {
         console.error('Keine Invoice ID gefunden in Session oder via Payment Link lookup')
@@ -88,6 +106,8 @@ export async function POST(request: NextRequest) {
 }
 
 async function handlePaymentSuccess(invoiceId: string | undefined, stripePaymentId: string) {
+  console.log(`handlePaymentSuccess aufgerufen mit invoiceId: ${invoiceId}, stripePaymentId: ${stripePaymentId}`)
+
   if (!invoiceId) {
     console.error('Keine Invoice ID im Payment Event')
     return
@@ -96,14 +116,24 @@ async function handlePaymentSuccess(invoiceId: string | undefined, stripePayment
   // Rechnung mit allen Relations laden (inkl. assignment_id für Lead-Delivery)
   const { data: invoice, error: invoiceError } = await supabase
     .from('invoices')
-    .select('*, broker:brokers(*), assignment_id')
+    .select('*, broker:brokers(*), assignment_id, package_id')
     .eq('id', invoiceId)
     .single()
 
   if (invoiceError || !invoice) {
-    console.error('Rechnung nicht gefunden:', invoiceId)
+    console.error('Rechnung nicht gefunden:', invoiceId, invoiceError)
     return
   }
+
+  console.log('Invoice gefunden:', {
+    id: invoice.id,
+    invoice_number: invoice.invoice_number,
+    type: invoice.type,
+    status: invoice.status,
+    package_id: invoice.package_id,
+    assignment_id: invoice.assignment_id,
+    broker_email: invoice.broker?.email
+  })
 
   // Bereits bezahlt? Dann nichts tun
   if (invoice.status === 'paid') {
@@ -112,7 +142,7 @@ async function handlePaymentSuccess(invoiceId: string | undefined, stripePayment
   }
 
   // Rechnung als bezahlt markieren
-  await supabase
+  const { error: updateError } = await supabase
     .from('invoices')
     .update({
       status: 'paid',
@@ -121,6 +151,11 @@ async function handlePaymentSuccess(invoiceId: string | undefined, stripePayment
       stripe_payment_id: stripePaymentId,
     })
     .eq('id', invoiceId)
+
+  if (updateError) {
+    console.error('Fehler beim Aktualisieren der Rechnung:', updateError)
+    return
+  }
 
   console.log(`Rechnung ${invoice.invoice_number} als bezahlt markiert (Stripe: ${stripePaymentId})`)
 
@@ -281,24 +316,62 @@ async function deliverSingleLead(invoice: any) {
 
 // Lead-Paket aktivieren
 async function activatePackage(invoice: any) {
-  // Paket finden
-  const { data: pkg, error: pkgError } = await supabase
+  console.log(`activatePackage aufgerufen für Rechnung: ${invoice.id}`)
+
+  // Paket finden - auch über package_id in der Invoice
+  let pkg = null
+  let pkgError = null
+
+  // Erst über invoice_id suchen
+  const result1 = await supabase
     .from('lead_packages')
     .select('*')
     .eq('invoice_id', invoice.id)
     .single()
 
+  if (result1.data) {
+    pkg = result1.data
+    console.log('Paket über invoice_id gefunden:', pkg.name)
+  } else if (invoice.package_id) {
+    // Fallback: über package_id in der Invoice suchen
+    const result2 = await supabase
+      .from('lead_packages')
+      .select('*')
+      .eq('id', invoice.package_id)
+      .single()
+
+    if (result2.data) {
+      pkg = result2.data
+      console.log('Paket über package_id gefunden:', pkg.name)
+    } else {
+      pkgError = result2.error
+    }
+  } else {
+    pkgError = result1.error
+  }
+
   if (pkgError || !pkg) {
-    console.error('Kein Paket gefunden für Rechnung:', invoice.id)
+    console.error('Kein Paket gefunden für Rechnung:', invoice.id, pkgError)
     return
   }
 
+  console.log('Paket Details:', {
+    id: pkg.id,
+    name: pkg.name,
+    total_leads: pkg.total_leads,
+    delivered_leads: pkg.delivered_leads,
+    distribution_type: pkg.distribution_type,
+    status: pkg.status
+  })
+
   // Check if there are pre-reserved leads (from "from-leads" creation)
-  const { data: pendingAssignments } = await supabase
+  const { data: pendingAssignments, error: assignError } = await supabase
     .from('lead_assignments')
     .select('*, lead:leads(*, category:lead_categories(*))')
     .eq('package_id', pkg.id)
     .eq('status', 'pending')
+
+  console.log(`Gefundene pending Assignments: ${pendingAssignments?.length || 0}`, assignError)
 
   if (pendingAssignments && pendingAssignments.length > 0) {
     // This is a package with pre-selected leads - deliver them now
