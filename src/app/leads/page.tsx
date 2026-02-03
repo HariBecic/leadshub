@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { Plus, Search, RefreshCw, Zap, Check, X, Users, ChevronDown } from 'lucide-react'
+import { Plus, Search, RefreshCw, Zap, Check, X, Users, ChevronDown, Package } from 'lucide-react'
 
 interface Lead {
   id: string
@@ -80,6 +80,17 @@ export default function LeadsPage() {
     category_id: ''
   })
   const [savingLead, setSavingLead] = useState(false)
+
+  // Create Package from Leads Modal
+  const [showCreatePackageModal, setShowCreatePackageModal] = useState(false)
+  const [packageForm, setPackageForm] = useState({
+    name: '',
+    broker_id: '',
+    price: '',
+    distribution_type: 'instant',
+    leads_per_day: 2
+  })
+  const [creatingPackage, setCreatingPackage] = useState(false)
 
   useEffect(() => { loadData() }, [])
 
@@ -267,6 +278,48 @@ export default function LeadsPage() {
     setBulkAssigning(false)
   }
 
+  // Create package from selected leads
+  async function createPackageFromLeads() {
+    if (!packageForm.broker_id || selectedLeads.size === 0) return
+    setCreatingPackage(true)
+
+    try {
+      const leadIds = Array.from(selectedLeads)
+
+      const res = await fetch('/api/packages/from-leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_ids: leadIds,
+          broker_id: packageForm.broker_id,
+          name: packageForm.name || `${leadIds.length}er Paket`,
+          price: parseFloat(packageForm.price) || 0,
+          distribution_type: packageForm.distribution_type,
+          leads_per_day: packageForm.distribution_type === 'distributed' ? packageForm.leads_per_day : null
+        })
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        alert('Fehler: ' + (data.error || 'Unbekannter Fehler'))
+        setCreatingPackage(false)
+        return
+      }
+
+      setImportStatus(`Paket "${data.package.name}" erstellt mit ${leadIds.length} Leads`)
+      setSelectedLeads(new Set())
+      setShowCreatePackageModal(false)
+      setPackageForm({ name: '', broker_id: '', price: '', distribution_type: 'instant', leads_per_day: 2 })
+      loadData()
+      setTimeout(() => setImportStatus(null), 5000)
+    } catch (error) {
+      console.error('Error creating package:', error)
+      alert('Fehler beim Erstellen: ' + (error as Error).message)
+    }
+    setCreatingPackage(false)
+  }
+
   function handleSort(field: 'created_at' | 'lead_number' | 'name') {
     if (sortBy === field) {
       setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
@@ -417,6 +470,9 @@ export default function LeadsPage() {
             <button onClick={() => setSelectedLeads(new Set())} className="btn btn-secondary" style={{ padding: '8px 16px' }}>
               <X size={16} /> Auswahl aufheben
             </button>
+            <button onClick={() => setShowCreatePackageModal(true)} className="btn btn-secondary" style={{ padding: '8px 16px', background: 'rgba(249, 115, 22, 0.2)', borderColor: 'rgba(249, 115, 22, 0.4)' }}>
+              <Package size={16} /> Paket erstellen
+            </button>
             <button onClick={() => setShowBulkAssign(true)} className="btn btn-primary" style={{ padding: '8px 16px' }}>
               <Users size={16} /> Alle zuweisen
             </button>
@@ -503,6 +559,142 @@ export default function LeadsPage() {
               >
                 {bulkAssigning ? <RefreshCw size={16} className="spin" /> : <Check size={16} />}
                 {selectedLeads.size} Leads zuweisen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Package from Leads Modal */}
+      {showCreatePackageModal && (
+        <div className="modal-overlay" onClick={() => setShowCreatePackageModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <h2 style={{ marginBottom: '8px' }}>Paket aus {selectedLeads.size} Leads erstellen</h2>
+            <p style={{ opacity: 0.7, marginBottom: '20px' }}>Die ausgewählten Leads werden dem Paket zugewiesen</p>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label className="input-label">Paketname</label>
+              <input
+                type="text"
+                className="input"
+                placeholder={`${selectedLeads.size}er Paket`}
+                value={packageForm.name}
+                onChange={e => setPackageForm({...packageForm, name: e.target.value})}
+              />
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label className="input-label">Broker *</label>
+              <select
+                className="input"
+                value={packageForm.broker_id}
+                onChange={e => setPackageForm({...packageForm, broker_id: e.target.value})}
+                required
+              >
+                <option value="">-- Auswählen --</option>
+                {brokers.map(b => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label className="input-label">Preis (CHF)</label>
+              <input
+                type="number"
+                step="0.01"
+                className="input"
+                placeholder="0.00"
+                value={packageForm.price}
+                onChange={e => setPackageForm({...packageForm, price: e.target.value})}
+              />
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label className="input-label">Lieferart</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <label style={{
+                  padding: '16px',
+                  border: packageForm.distribution_type === 'instant' ? '2px solid #f97316' : '2px solid rgba(255,255,255,0.2)',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  background: packageForm.distribution_type === 'instant' ? 'rgba(249, 115, 22, 0.1)' : 'transparent'
+                }}>
+                  <input
+                    type="radio"
+                    name="pkg_distribution"
+                    checked={packageForm.distribution_type === 'instant'}
+                    onChange={() => setPackageForm({...packageForm, distribution_type: 'instant'})}
+                    style={{ display: 'none' }}
+                  />
+                  <div style={{ fontWeight: 600 }}>Sofort</div>
+                  <div style={{ fontSize: '13px', opacity: 0.7 }}>Alle Leads auf einmal</div>
+                </label>
+                <label style={{
+                  padding: '16px',
+                  border: packageForm.distribution_type === 'distributed' ? '2px solid #f97316' : '2px solid rgba(255,255,255,0.2)',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  background: packageForm.distribution_type === 'distributed' ? 'rgba(249, 115, 22, 0.1)' : 'transparent'
+                }}>
+                  <input
+                    type="radio"
+                    name="pkg_distribution"
+                    checked={packageForm.distribution_type === 'distributed'}
+                    onChange={() => setPackageForm({...packageForm, distribution_type: 'distributed'})}
+                    style={{ display: 'none' }}
+                  />
+                  <div style={{ fontWeight: 600 }}>Verteilt</div>
+                  <div style={{ fontSize: '13px', opacity: 0.7 }}>Täglich X Leads</div>
+                </label>
+              </div>
+            </div>
+
+            {packageForm.distribution_type === 'distributed' && (
+              <div style={{ marginBottom: '16px' }}>
+                <label className="input-label">Leads pro Tag</label>
+                <input
+                  type="number"
+                  className="input"
+                  value={packageForm.leads_per_day}
+                  onChange={e => setPackageForm({...packageForm, leads_per_day: parseInt(e.target.value) || 1})}
+                  min="1"
+                  max="50"
+                />
+              </div>
+            )}
+
+            {/* Summary */}
+            <div style={{ marginBottom: '24px', padding: '16px', borderRadius: '12px', background: 'rgba(249, 115, 22, 0.15)', border: '1px solid rgba(249, 115, 22, 0.3)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ opacity: 0.7 }}>Anzahl Leads:</span>
+                <span style={{ fontWeight: 600 }}>{selectedLeads.size}</span>
+              </div>
+              {packageForm.price && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ opacity: 0.7 }}>Preis pro Lead:</span>
+                  <span style={{ fontWeight: 600 }}>CHF {(parseFloat(packageForm.price) / selectedLeads.size).toFixed(2)}</span>
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                type="button"
+                onClick={() => setShowCreatePackageModal(false)}
+                className="btn btn-secondary"
+                style={{ flex: 1 }}
+              >
+                Abbrechen
+              </button>
+              <button
+                onClick={createPackageFromLeads}
+                disabled={!packageForm.broker_id || creatingPackage}
+                className="btn btn-primary"
+                style={{ flex: 1, background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)' }}
+              >
+                {creatingPackage ? <RefreshCw size={16} className="spin" /> : <Package size={16} />}
+                Paket erstellen
               </button>
             </div>
           </div>
