@@ -68,24 +68,35 @@ export async function POST(request: NextRequest) {
     let leadsDelivered = 0
     let emailSent = false
 
+    console.log(`Invoice package_id: ${invoice.package_id}`)
+
     // Handle package
     if (invoice.package_id) {
-      const { data: pkg } = await supabase
+      const { data: pkg, error: pkgError } = await supabase
         .from('lead_packages')
         .select('*')
         .eq('id', invoice.package_id)
         .single()
 
+      console.log(`Package gefunden: ${pkg?.id}, Error: ${pkgError?.message || 'none'}`)
+
       if (pkg) {
         // Check for pre-reserved leads
-        const { data: pendingAssignments } = await supabase
+        const { data: pendingAssignments, error: assignError } = await supabase
           .from('lead_assignments')
           .select('*, lead:leads(*, category:lead_categories(*))')
           .eq('package_id', pkg.id)
           .eq('status', 'pending')
 
+        console.log(`Pending assignments: ${pendingAssignments?.length || 0}, Error: ${assignError?.message || 'none'}`)
+
         if (pendingAssignments && pendingAssignments.length > 0) {
           console.log(`${pendingAssignments.length} reservierte Leads gefunden`)
+        } else {
+          console.log('Keine pending assignments gefunden für package:', pkg.id)
+        }
+
+        if (pendingAssignments && pendingAssignments.length > 0) {
 
           // Update assignments
           const assignmentIds = pendingAssignments.map(a => a.id)
@@ -148,7 +159,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       leads_delivered: leadsDelivered,
-      email_sent: emailSent
+      email_sent: emailSent,
+      debug: {
+        has_package_id: !!invoice.package_id,
+        package_id: invoice.package_id,
+        broker_email: invoice.broker?.email || null
+      }
     })
 
   } catch (err: any) {

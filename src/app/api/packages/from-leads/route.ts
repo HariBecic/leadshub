@@ -74,7 +74,12 @@ export async function POST(request: NextRequest) {
       unlocked: false
     }))
 
-    await supabase.from('lead_assignments').insert(assignments)
+    const { error: assignmentError } = await supabase.from('lead_assignments').insert(assignments)
+    if (assignmentError) {
+      console.error('Fehler beim Erstellen der Assignments:', assignmentError)
+      return NextResponse.json({ error: 'Fehler beim Reservieren der Leads', details: assignmentError.message }, { status: 500 })
+    }
+    console.log(`${assignments.length} Assignments erstellt für Package ${pkg.id}`)
 
     // Mark leads as reserved (using 'assigned' status to prevent double-booking)
     await supabase
