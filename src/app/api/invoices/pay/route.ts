@@ -55,40 +55,106 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (pkg) {
-        // Activate package
-        await supabase
-          .from('lead_packages')
-          .update({ status: 'active', paid_at: new Date().toISOString() })
-          .eq('id', pkg.id)
+        // Check if there are pre-reserved leads (from "from-leads" creation)
+        const { data: pendingAssignments } = await supabase
+          .from('lead_assignments')
+          .select('*, lead:leads(*, category:lead_categories(*))')
+          .eq('package_id', pkg.id)
+          .eq('status', 'pending')
 
-        // For instant delivery, assign leads now
-        if (pkg.distribution_type === 'instant') {
-          const result = await deliverPackageLeads(pkg, invoice.broker)
-          leadsDelivered = result.delivered
-          emailSent = result.emailSent
-        } else {
-          // For distributed, send confirmation
+        if (pendingAssignments && pendingAssignments.length > 0) {
+          // This is a package with pre-selected leads - deliver them now
+          console.log(`Paket ${pkg.name} hat ${pendingAssignments.length} reservierte Leads - liefere jetzt`)
+
+          // Update assignments to 'sent' and unlock
+          const assignmentIds = pendingAssignments.map(a => a.id)
+          await supabase
+            .from('lead_assignments')
+            .update({
+              status: 'sent',
+              unlocked: true,
+              email_sent_at: new Date().toISOString()
+            })
+            .in('id', assignmentIds)
+
+          // Update package to completed
+          await supabase
+            .from('lead_packages')
+            .update({
+              status: 'completed',
+              paid_at: new Date().toISOString(),
+              delivered_leads: pendingAssignments.length
+            })
+            .eq('id', pkg.id)
+
+          leadsDelivered = pendingAssignments.length
+
+          // Send email with all lead details
           if (invoice.broker?.email) {
-            const content = `
-              ${greeting(invoice.broker.contact_person || invoice.broker.name)}
-              ${paragraph(`Vielen Dank! Ihre Zahlung für "<strong>${pkg.name}</strong>" ist eingegangen.`)}
-              ${paragraph(`Sie erhalten ab sofort täglich <strong>${pkg.leads_per_day} Leads</strong> per E-Mail, bis alle <strong>${pkg.total_leads} Leads</strong> geliefert sind.`)}
-              ${spacer(20)}
-              ${highlightBox(`<strong>Start:</strong> Die erste Lieferung erfolgt morgen um 09:00 Uhr.`, 'success')}
-              ${signature()}
-            `
-            const emailHtml = emailTemplate(content, '✅ Zahlung erhalten')
+            const leads = pendingAssignments.map(a => a.lead).filter(Boolean)
+            const emailHtml = subscriptionDeliveryEmail({
+              brokerName: invoice.broker.contact_person || invoice.broker.name,
+              packageName: pkg.name,
+              leadsCount: leads.length,
+              leads: leads.map((lead: any) => ({
+                name: `${lead.first_name || ''} ${lead.last_name || ''}`,
+                email: lead.email || '',
+                phone: lead.phone || '',
+                plz: lead.plz || '',
+                ort: lead.ort || '',
+                extraData: lead.extra_data
+              }))
+            })
 
             try {
               await resend.emails.send({
                 from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
                 to: invoice.broker.email,
-                subject: `✅ Zahlung erhalten - ${pkg.name} aktiviert`,
+                subject: `🎉 ${pkg.name} - ${leads.length} Leads verfügbar`,
                 html: emailHtml
               })
               emailSent = true
             } catch (e) {
               console.error('Email error:', e)
+            }
+          }
+        } else {
+          // Standard package flow - no pre-reserved leads
+          // Activate package
+          await supabase
+            .from('lead_packages')
+            .update({ status: 'active', paid_at: new Date().toISOString() })
+            .eq('id', pkg.id)
+
+          // For instant delivery, assign leads now
+          if (pkg.distribution_type === 'instant') {
+            const result = await deliverPackageLeads(pkg, invoice.broker)
+            leadsDelivered = result.delivered
+            emailSent = result.emailSent
+          } else {
+            // For distributed, send confirmation
+            if (invoice.broker?.email) {
+              const content = `
+                ${greeting(invoice.broker.contact_person || invoice.broker.name)}
+                ${paragraph(`Vielen Dank! Ihre Zahlung für "<strong>${pkg.name}</strong>" ist eingegangen.`)}
+                ${paragraph(`Sie erhalten ab sofort täglich <strong>${pkg.leads_per_day} Leads</strong> per E-Mail, bis alle <strong>${pkg.total_leads} Leads</strong> geliefert sind.`)}
+                ${spacer(20)}
+                ${highlightBox(`<strong>Start:</strong> Die erste Lieferung erfolgt morgen um 09:00 Uhr.`, 'success')}
+                ${signature()}
+              `
+              const emailHtml = emailTemplate(content, '✅ Zahlung erhalten')
+
+              try {
+                await resend.emails.send({
+                  from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
+                  to: invoice.broker.email,
+                  subject: `✅ Zahlung erhalten - ${pkg.name} aktiviert`,
+                  html: emailHtml
+                })
+                emailSent = true
+              } catch (e) {
+                console.error('Email error:', e)
+              }
             }
           }
         }
