@@ -51,8 +51,7 @@ export async function POST(request: NextRequest) {
       .from('invoices')
       .update({
         status: 'paid',
-        paid_at: new Date().toISOString(),
-        payment_method: 'stripe'
+        paid_at: new Date().toISOString()
       })
       .eq('id', invoice.id)
 
