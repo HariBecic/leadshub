@@ -43,7 +43,34 @@ export async function POST(request: NextRequest) {
     // Nur checkout.session.completed und payment_intent.succeeded behandeln
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session
-      await handlePaymentSuccess(session.metadata?.invoice_id, session.id)
+
+      // Bei Payment Links: Metadata kann in Session oder Payment Link sein
+      let invoiceId = session.metadata?.invoice_id
+
+      // Fallback: Wenn keine invoice_id in Session, über payment_link_id in DB suchen
+      if (!invoiceId && session.payment_link) {
+        const paymentLinkId = typeof session.payment_link === 'string'
+          ? session.payment_link
+          : session.payment_link.id
+
+        // Invoice über stripe_payment_id (Payment Link ID) finden
+        const { data: invoiceFromDb } = await supabase
+          .from('invoices')
+          .select('id')
+          .eq('stripe_payment_id', paymentLinkId)
+          .single()
+
+        if (invoiceFromDb) {
+          invoiceId = invoiceFromDb.id
+          console.log(`Invoice ID via Payment Link gefunden: ${invoiceId}`)
+        }
+      }
+
+      if (invoiceId) {
+        await handlePaymentSuccess(invoiceId, session.id)
+      } else {
+        console.error('Keine Invoice ID gefunden in Session oder via Payment Link lookup')
+      }
     } else if (event.type === 'payment_intent.succeeded') {
       const paymentIntent = event.data.object as Stripe.PaymentIntent
       // Bei Payment Links kommt das Event über payment_intent
