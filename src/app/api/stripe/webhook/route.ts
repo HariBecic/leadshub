@@ -266,6 +266,49 @@ async function activatePackage(invoice: any) {
     return
   }
 
+  // Check if there are pre-reserved leads (from "from-leads" creation)
+  const { data: pendingAssignments } = await supabase
+    .from('lead_assignments')
+    .select('*, lead:leads(*, category:lead_categories(*))')
+    .eq('package_id', pkg.id)
+    .eq('status', 'pending')
+
+  if (pendingAssignments && pendingAssignments.length > 0) {
+    // This is a package with pre-selected leads - deliver them now
+    console.log(`Paket ${pkg.name} hat ${pendingAssignments.length} reservierte Leads - liefere jetzt`)
+
+    // Update assignments to 'sent' and unlock
+    const assignmentIds = pendingAssignments.map(a => a.id)
+    await supabase
+      .from('lead_assignments')
+      .update({
+        status: 'sent',
+        unlocked: true,
+        email_sent_at: new Date().toISOString()
+      })
+      .in('id', assignmentIds)
+
+    // Update package to completed (all leads already assigned)
+    await supabase
+      .from('lead_packages')
+      .update({
+        status: 'completed',
+        activated_at: new Date().toISOString(),
+        delivered_leads: pendingAssignments.length
+      })
+      .eq('id', pkg.id)
+
+    // Send email with all lead details
+    if (invoice.broker?.email) {
+      const leads = pendingAssignments.map(a => a.lead).filter(Boolean)
+      await sendPackageLeadsEmail(invoice.broker, leads, pkg.name)
+    }
+
+    console.log(`Paket ${pkg.name} abgeschlossen - ${pendingAssignments.length} Leads geliefert`)
+    return
+  }
+
+  // Standard package flow - no pre-reserved leads
   // Paket aktivieren
   await supabase
     .from('lead_packages')
@@ -289,5 +332,122 @@ async function activatePackage(invoice: any) {
     } catch (err) {
       console.error('Fehler beim Instant-Delivery:', err)
     }
+  }
+}
+
+// Send email with package leads after payment
+async function sendPackageLeadsEmail(broker: any, leads: any[], packageName: string) {
+  const leadsTableRows = leads.map(lead => {
+    let extraDataHtml = ''
+    if (lead.extra_data && Object.keys(lead.extra_data).length > 0) {
+      const extraItems = Object.entries(lead.extra_data)
+        .filter(([key]) => !key.startsWith('meta_'))
+        .filter(([_, value]) => value && String(value).trim() !== '')
+        .slice(0, 5)
+        .map(([key, value]) => `${formatLabel(key)}: ${String(value)}`)
+        .join(', ')
+      if (extraItems) {
+        extraDataHtml = `<div style="font-size:12px;color:rgba(255,255,255,0.5);margin-top:4px;">${extraItems}</div>`
+      }
+    }
+
+    return `
+      <tr>
+        <td style="padding:16px;border-bottom:1px solid rgba(255,255,255,0.1);">
+          <div style="color:white;font-weight:500;">${lead.first_name || ''} ${lead.last_name || ''}</div>
+          ${extraDataHtml}
+        </td>
+        <td style="padding:16px;border-bottom:1px solid rgba(255,255,255,0.1);">
+          <a href="mailto:${lead.email}" style="color:#a78bfa;text-decoration:none;">${lead.email || '-'}</a>
+        </td>
+        <td style="padding:16px;border-bottom:1px solid rgba(255,255,255,0.1);">
+          <a href="tel:${lead.phone}" style="color:#a78bfa;text-decoration:none;">${lead.phone || '-'}</a>
+        </td>
+        <td style="padding:16px;border-bottom:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.8);">
+          ${lead.plz || ''} ${lead.ort || ''}
+        </td>
+        <td style="padding:16px;border-bottom:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.6);">
+          ${lead.category?.name || '-'}
+        </td>
+      </tr>
+    `
+  }).join('')
+
+  const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;font-family:system-ui,-apple-system,sans-serif;background:linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#1e1b4b 100%);min-height:100vh;">
+  <div style="max-width:800px;margin:0 auto;padding:40px 20px;">
+
+    <div style="text-align:center;margin-bottom:32px;">
+      <img src="https://leadshub2.vercel.app/logo.png" alt="LeadsHub" style="height:48px;width:auto;" />
+    </div>
+
+    <div style="background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);border-radius:24px;border:1px solid rgba(255,255,255,0.2);overflow:hidden;">
+
+      <div style="background:linear-gradient(135deg,rgba(34,197,94,0.3) 0%,rgba(22,163,74,0.2) 100%);padding:32px;text-align:center;border-bottom:1px solid rgba(255,255,255,0.1);">
+        <div style="font-size:48px;margin-bottom:16px;">🎉</div>
+        <h1 style="margin:0;font-size:24px;font-weight:700;color:white;">Zahlung erhalten!</h1>
+        <p style="margin:8px 0 0;color:rgba(255,255,255,0.7);">${packageName} - ${leads.length} Leads</p>
+      </div>
+
+      <div style="padding:32px;">
+        <p style="color:rgba(255,255,255,0.9);font-size:16px;line-height:1.6;margin:0 0 24px;">
+          Hallo ${broker.contact_person || broker.name},<br><br>
+          Vielen Dank für Ihre Zahlung! Hier sind Ihre <strong>${leads.length} Leads</strong>:
+        </p>
+
+        <div style="background:rgba(255,255,255,0.05);border-radius:16px;overflow:hidden;margin-bottom:24px;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="background:rgba(255,255,255,0.1);">
+                <th style="padding:12px 16px;text-align:left;color:rgba(255,255,255,0.7);font-size:12px;font-weight:600;">NAME</th>
+                <th style="padding:12px 16px;text-align:left;color:rgba(255,255,255,0.7);font-size:12px;font-weight:600;">E-MAIL</th>
+                <th style="padding:12px 16px;text-align:left;color:rgba(255,255,255,0.7);font-size:12px;font-weight:600;">TELEFON</th>
+                <th style="padding:12px 16px;text-align:left;color:rgba(255,255,255,0.7);font-size:12px;font-weight:600;">ORT</th>
+                <th style="padding:12px 16px;text-align:left;color:rgba(255,255,255,0.7);font-size:12px;font-weight:600;">KATEGORIE</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${leadsTableRows}
+            </tbody>
+          </table>
+        </div>
+
+        <div style="background:rgba(34,197,94,0.15);border-radius:12px;padding:16px;border:1px solid rgba(34,197,94,0.3);">
+          <p style="margin:0;color:#86efac;font-size:14px;">
+            <strong>Tipp:</strong> Kontaktieren Sie die Leads möglichst innerhalb von 24 Stunden für die beste Conversion-Rate.
+          </p>
+        </div>
+      </div>
+
+      <div style="background:rgba(0,0,0,0.2);padding:24px 32px;border-top:1px solid rgba(255,255,255,0.1);">
+        <p style="margin:0;color:rgba(255,255,255,0.6);font-size:14px;">
+          Freundliche Grüsse<br>
+          <strong style="color:white;">LeadsHub</strong>
+        </p>
+      </div>
+
+    </div>
+
+  </div>
+</body>
+</html>
+  `
+
+  try {
+    await resend.emails.send({
+      from: process.env.EMAIL_FROM || 'LeadsHub <onboarding@resend.dev>',
+      to: broker.email,
+      subject: `🎉 ${packageName} - ${leads.length} Leads verfügbar`,
+      html: emailHtml
+    })
+    console.log(`Package leads email sent to ${broker.email}`)
+  } catch (e) {
+    console.error('Error sending package leads email:', e)
   }
 }
